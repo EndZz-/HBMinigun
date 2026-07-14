@@ -21,7 +21,8 @@ import {
   Info,
   Maximize2,
   Minimize2,
-  RefreshCw
+  RefreshCw,
+  Clock
 } from 'lucide-react';
 
 // Advanced fuzzy language matching engine (handles 2-letter, 3-letter, regional codes, full names, and aliases)
@@ -179,6 +180,10 @@ export default function App() {
   const [directoryOptionsCollapsed, setDirectoryOptionsCollapsed] = useState(false);
   const [presetProfileCollapsed, setPresetProfileCollapsed] = useState(false);
   const [batchApplyCollapsed, setBatchApplyCollapsed] = useState(false);
+  const [autoScanCollapsed, setAutoScanCollapsed] = useState(true);
+  const [autoRescanInterval, setAutoRescanInterval] = useState(0); // minutes, 0 means disabled
+  const [autoAddToQueue, setAutoAddToQueue] = useState(false);
+  const [timeUntilNextScan, setTimeUntilNextScan] = useState(0); // seconds
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
@@ -549,7 +554,12 @@ export default function App() {
     setSelectedPaths(new Set());
     
     try {
-      const files = await window.api.scanDirectory(folderPath);
+      const checkConfig = {
+        transcodeMode,
+        destinationDir,
+        presetFile: settings.handbrakePresetPath
+      };
+      const files = await window.api.scanDirectory(folderPath, checkConfig);
       setScannedFiles(files);
 
       // Initialize configuration for each file with defaults and language matching
@@ -582,8 +592,8 @@ export default function App() {
       });
       setFileConfigs(initialConfigs);
       
-      // Auto-select files that are NOT Plex OK (red rows) as target for transcoding
-      const notOkPaths = files.filter(f => !f.isPlexOk).map(f => f.fullPath);
+      // Auto-select files that are NOT Plex OK (red rows) and NOT processed as target for transcoding
+      const notOkPaths = files.filter(f => !f.isPlexOk && !f.isProcessed).map(f => f.fullPath);
       setSelectedPaths(new Set(notOkPaths));
 
       showToast(
@@ -597,6 +607,205 @@ export default function App() {
       setIsScanning(false);
     }
   };
+
+  const startTranscodeWithFiles = async (allFiles, filesToProcess) => {
+    if (filesToProcess.length === 0) return;
+
+    // Clear logs
+    consoleLogsRef.current = {};
+    setActiveConsoleLog('');
+    setActiveConsoleFile(filesToProcess[0]);
+
+    // Setup queue state
+    const initialQueue = filesToProcess.map(f => ({
+      file: f,
+      percent: 0,
+      speed: 0,
+      avgSpeed: 0,
+      eta: 'Waiting...',
+      status: 'Queued'
+    }));
+    
+    setQueue(initialQueue);
+    setIsTranscoding(true);
+
+    const config = {
+      engines: enginesCount,
+      mode: transcodeMode,
+      postAction: postAction,
+      replaceAction: replaceAction,
+      destinationDir: destinationDir,
+      presetFile: settings.handbrakePresetPath,
+      presetName: settings.handbrakePresetName,
+      fileConfigs: fileConfigs
+    };
+
+    try {
+      const res = await window.api.startTranscode(filesToProcess, config);
+      if (!res.success) {
+        showToast('Transcode Failed', res.message);
+        setIsTranscoding(false);
+      } else {
+        showToast('Auto-Queue', `Automatically started transcoding ${filesToProcess.length} new files.`, 'success');
+      }
+    } catch (err) {
+      showToast('Transcode Error', err.message);
+      setIsTranscoding(false);
+    }
+  };
+
+  const triggerAutoScan = async () => {
+    if (!scanDir) return;
+    
+    try {
+      const checkConfig = {
+        transcodeMode,
+        destinationDir,
+        presetFile: settings.handbrakePresetPath
+      };
+      const files = await window.api.scanDirectory(scanDir, checkConfig);
+      
+      setScannedFiles(files);
+      
+      setFileConfigs(prev => {
+        const next = { ...prev };
+        files.forEach(file => {
+          if (!next[file.fullPath]) {
+            // Initialize default config for new file
+            let audioSrc1 = 'none';
+            if (file.audioStreams.length > 0) {
+              const engAudioIdx = file.audioStreams.findIndex(s => s.language && languagesMatch(s.language, 'eng'));
+              audioSrc1 = engAudioIdx !== -1 ? (engAudioIdx + 1).toString() : '1';
+            }
+            let subSrc1 = 'none';
+            if (file.subtitleStreams.length > 0) {
+              const engSubIdx = file.subtitleStreams.findIndex(s => s.language && languagesMatch(s.language, 'eng'));
+              subSrc1 = engSubIdx !== -1 ? (engSubIdx + 1).toString() : 'none';
+            }
+            next[file.fullPath] = {
+              videoCodec: 'h264',
+              quality: 20,
+              framerate: 'constant',
+              audioCodec: 'AAC',
+              audioSource1: audioSrc1,
+              audioSource2: 'none',
+              subtitleSource1: subSrc1,
+              subtitleSource2: 'none'
+            };
+          }
+        });
+        return next;
+      });
+
+      // Update selected paths (uncheck processed, add new non-Plex-OK and non-processed)
+      let updatedSelected;
+      setSelectedPaths(prev => {
+        const next = new Set(prev);
+        files.forEach(file => {
+          if (file.isProcessed) {
+            next.delete(file.fullPath);
+          } else if (!file.isPlexOk) {
+            next.add(file.fullPath);
+          }
+        });
+        updatedSelected = next;
+        return next;
+      });
+
+      if (autoAddToQueue) {
+        // Find checked, non-processed, non-Plex-OK files that are NOT in queue
+        const filesToProcess = files.filter(file => {
+          const isSelected = updatedSelected ? updatedSelected.has(file.fullPath) : (!file.isProcessed && !file.isPlexOk);
+          const inQueue = queue.some(item => item.file.fullPath === file.fullPath);
+          return isSelected && !inQueue;
+        });
+
+        if (filesToProcess.length > 0) {
+          if (isTranscoding) {
+            setQueue(prev => [
+              ...prev,
+              ...filesToProcess.map(f => ({
+                file: f,
+                percent: 0,
+                speed: 0,
+                avgSpeed: 0,
+                eta: 'Waiting...',
+                status: 'Queued'
+              }))
+            ]);
+            await window.api.appendTranscodeFiles(filesToProcess);
+            showToast('Auto-Queue', `Automatically added ${filesToProcess.length} new files to the active transcoding queue.`, 'info');
+          } else {
+            await startTranscodeWithFiles(files, filesToProcess);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Auto-scan error:', err);
+    }
+  };
+
+  const triggerAutoScanRef = useRef(triggerAutoScan);
+  useEffect(() => {
+    triggerAutoScanRef.current = triggerAutoScan;
+  });
+
+  // Rescan countdown effect
+  useEffect(() => {
+    if (autoRescanInterval <= 0 || !scanDir) {
+      setTimeUntilNextScan(0);
+      return;
+    }
+
+    setTimeUntilNextScan(autoRescanInterval * 60);
+
+    const intervalId = setInterval(() => {
+      setTimeUntilNextScan(prev => {
+        if (prev <= 1) {
+          triggerAutoScanRef.current();
+          return autoRescanInterval * 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [autoRescanInterval, scanDir, autoAddToQueue, isTranscoding, transcodeMode, destinationDir, settings.handbrakePresetPath]);
+
+  // Reactive processed status recheck effect
+  useEffect(() => {
+    if (scannedFiles.length === 0) return;
+
+    const updateProcessedStatuses = async () => {
+      try {
+        const checkConfig = {
+          transcodeMode,
+          destinationDir,
+          presetFile: settings.handbrakePresetPath
+        };
+        const updated = await window.api.checkProcessedStatus(scannedFiles, checkConfig);
+        
+        setScannedFiles(prev => prev.map(file => {
+          const matching = updated.find(u => u.fullPath === file.fullPath);
+          return matching ? { ...file, isProcessed: matching.isProcessed } : file;
+        }));
+
+        setSelectedPaths(prev => {
+          const next = new Set(prev);
+          updated.forEach(u => {
+            if (u.isProcessed) {
+              next.delete(u.fullPath);
+            }
+          });
+          return next;
+        });
+      } catch (err) {
+        console.error('Error updating processed status:', err);
+      }
+    };
+
+    updateProcessedStatuses();
+  }, [destinationDir, transcodeMode, settings.handbrakePresetPath]);
 
   // Browse output destination folder (Option 2)
   const handleBrowseDestination = async () => {
@@ -1064,7 +1273,7 @@ export default function App() {
                     return (
                       <tr 
                         key={file.fullPath}
-                        className={`${file.isPlexOk ? 'row-plex-ok' : 'row-plex-red'} ${selectedPaths.has(file.fullPath) ? 'row-selected' : ''}`}
+                        className={`${file.isProcessed ? 'row-processed' : (file.isPlexOk ? 'row-plex-ok' : 'row-plex-red')} ${selectedPaths.has(file.fullPath) ? 'row-selected' : ''}`}
                       >
                         <td className="checkbox-col">
                           <input 
@@ -1453,6 +1662,63 @@ export default function App() {
         </>
       )}
           
+          {/* Directory Auto-Scan */}
+          <div 
+            className="section-title"
+            onClick={() => setAutoScanCollapsed(!autoScanCollapsed)}
+            style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Clock size={14} />
+              Directory Auto-Scan
+            </div>
+            {autoScanCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+          </div>
+
+          {!autoScanCollapsed && (
+            <div style={{ background: 'rgba(28, 32, 42, 0.4)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '16px' }}>
+              <div className="form-group">
+                <label>Rescan Interval (Minutes)</label>
+                <input 
+                  type="number" 
+                  min="0" 
+                  className="text-input" 
+                  placeholder="0 to disable auto-scan"
+                  value={autoRescanInterval}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    setAutoRescanInterval(isNaN(val) ? 0 : val);
+                  }}
+                  disabled={isTranscoding && autoRescanInterval > 0}
+                />
+                <span className="text-muted" style={{ fontSize: '10.5px', marginTop: '4px', display: 'block' }}>
+                  Set to 0 to disable periodic rescanning.
+                </span>
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
+                <input 
+                  type="checkbox" 
+                  id="autoAddToQueue" 
+                  className="custom-checkbox"
+                  checked={autoAddToQueue}
+                  onChange={(e) => setAutoAddToQueue(e.target.checked)}
+                />
+                <label htmlFor="autoAddToQueue" style={{ margin: 0, cursor: 'pointer', userSelect: 'none', fontSize: '11px', color: 'var(--text-bright)' }}>
+                  Automatically add new files to queue
+                </label>
+              </div>
+
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', borderTop: '1px solid rgba(46,53,71,0.3)', paddingTop: '8px' }}>
+                {autoRescanInterval > 0 && scanDir ? (
+                  <span style={{ color: 'var(--accent)' }}>Next scan in: <strong>{timeUntilNextScan}s</strong></span>
+                ) : (
+                  <span>Auto-scan disabled (interval is 0 or no folder scanned)</span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* HandBrake Encoder Settings */}
           <div 
             className="section-title"

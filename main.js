@@ -199,8 +199,29 @@ function runMediaInfo(mediaInfoPath, filePath) {
   });
 }
 
+function checkFileProcessed(file, checkConfig) {
+  if (!checkConfig) return false;
+  const { transcodeMode, destinationDir, presetFile } = checkConfig;
+  const outputExtension = (presetFile && presetFile.toLowerCase().endsWith('.mp4')) ? '.mp4' : '.mkv';
+  const baseNameWithoutExt = path.basename(file.fullPath, path.extname(file.fullPath));
+  const outputFileName = baseNameWithoutExt + outputExtension;
+
+  if (transcodeMode === 'replace') {
+    const expectedOutPath = path.join(path.dirname(file.fullPath), outputFileName);
+    if (file.extension.toLowerCase() !== outputExtension.toLowerCase()) {
+      return fs.existsSync(expectedOutPath);
+    } else {
+      return file.isPlexOk === true;
+    }
+  } else if (transcodeMode === 'transcodeDir' && destinationDir) {
+    const expectedOutPath = path.join(destinationDir, path.dirname(file.relativePath), outputFileName);
+    return fs.existsSync(expectedOutPath);
+  }
+  return false;
+}
+
 // Scan directory and analyze files
-ipcMain.handle('scan-directory', async (event, dirPath) => {
+ipcMain.handle('scan-directory', async (event, dirPath, checkConfig) => {
   const settings = loadSettings();
   const tools = getToolPaths(settings);
   
@@ -223,6 +244,7 @@ ipcMain.handle('scan-directory', async (event, dirPath) => {
       
       const mediaInfoData = await runMediaInfo(tools.mediaInfo, file.fullPath);
       const analyzed = parseMediaInfo(file, mediaInfoData);
+      analyzed.isProcessed = checkFileProcessed(analyzed, checkConfig);
       results[fileIndex] = analyzed;
     }
   }
@@ -1142,3 +1164,16 @@ ipcMain.handle('download-and-install-update', async (event, downloadUrl) => {
     return { success: false, error: err.message };
   }
 });
+
+ipcMain.handle('check-processed-status', async (event, files, checkConfig) => {
+  return files.map(file => ({
+    fullPath: file.fullPath,
+    isProcessed: checkFileProcessed(file, checkConfig)
+  }));
+});
+
+ipcMain.handle('append-transcode-files', async (event, files) => {
+  transcodeQueue.push(...files);
+  return { success: true };
+});
+

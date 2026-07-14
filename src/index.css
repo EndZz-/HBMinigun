@@ -305,6 +305,17 @@ body {
   border-bottom-color: rgba(34, 197, 94, 0.15);
 }
 
+.files-table tr.row-processed {
+  background-color: rgba(22, 101, 52, 0.15);
+}
+.files-table tr.row-processed:hover {
+  background-color: rgba(22, 101, 52, 0.22);
+}
+.files-table tr.row-processed td {
+  border-bottom-color: rgba(34, 197, 94, 0.3);
+}
+
+
 .files-table tr.row-plex-red {
   background-color: rgba(127, 29, 29, 0.06);
 }
