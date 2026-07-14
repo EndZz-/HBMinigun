@@ -1077,7 +1077,7 @@ ipcMain.handle('check-for-updates', async () => {
 
     const release = await fetchLatestRelease();
     const latestTag = release.tag_name;
-    const currentVersion = "v0.1";
+    const currentVersion = "v" + app.getVersion();
 
     const cleanVersion = (v) => v.replace(/^v/, '').trim();
     const semverCompare = (v1, v2) => {
