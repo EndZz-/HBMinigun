@@ -1,7 +1,7 @@
 {
   "name": "hbminigun",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/EndZz-/HBMinigun.git"
@@ -43,7 +43,8 @@
     "publish": {
       "provider": "github",
       "owner": "EndZz-",
-      "repo": "HBMinigun"
+      "repo": "HBMinigun",
+      "releaseType": "release"
     },
     "nsis": {
       "oneClick": true,
