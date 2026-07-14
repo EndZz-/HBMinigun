@@ -40,6 +40,11 @@
       "target": "nsis",
       "artifactName": "HBMiniGun_v${version}.${ext}"
     },
+    "publish": {
+      "provider": "github",
+      "owner": "EndZz-",
+      "repo": "HBMinigun"
+    },
     "nsis": {
       "oneClick": true,
       "allowToChangeInstallationDirectory": false,
