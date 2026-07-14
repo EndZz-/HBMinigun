@@ -1,0 +1,1144 @@
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { spawn, execFile, exec } = require('child_process');
+
+let mainWindow;
+
+// Settings path
+const settingsDir = path.join(app.getPath('userData'));
+const settingsPath = path.join(settingsDir, 'settings.json');
+
+// Default Settings
+const defaultSettings = {
+  handbrakePresetPath: '',
+  handbrakePresetName: '',
+  handbrakePath: '', // Empty means check PATH or default installer locations
+  mediaInfoPath: '',  // Empty means check PATH or default installer locations
+  engines: 2,
+  tempDir: 'C:\\TempHBMG'
+};
+
+// Load settings
+function loadSettings() {
+  try {
+    if (!fs.existsSync(settingsDir)) {
+      fs.mkdirSync(settingsDir, { recursive: true });
+    }
+    if (fs.existsSync(settingsPath)) {
+      const data = fs.readFileSync(settingsPath, 'utf8');
+      return { ...defaultSettings, ...JSON.parse(data) };
+    }
+  } catch (err) {
+    console.error('Failed to load settings:', err);
+  }
+  return { ...defaultSettings };
+}
+
+// Save settings
+function saveSettings(settings) {
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    return true;
+  } catch (err) {
+    console.error('Failed to save settings:', err);
+    return false;
+  }
+}
+
+// Helper to check if file exists
+function fileExists(filePath) {
+  if (!filePath) return false;
+  try {
+    return fs.existsSync(filePath);
+  } catch (e) {
+    return false;
+  }
+}
+
+// Check executable path
+function checkTool(name, configuredPath, defaultPaths) {
+  // 1. Check custom path if configured
+  if (configuredPath && fileExists(configuredPath)) {
+    return configuredPath;
+  }
+
+  // 2. Check default installation paths
+  for (const p of defaultPaths) {
+    if (fileExists(p)) {
+      return p;
+    }
+  }
+
+  // 3. Try checking system path via where command
+  try {
+    // Run synchronously
+    const { execSync } = require('child_process');
+    const out = execSync(`where ${name}.exe`, { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+    const firstPath = out.split('\n')[0].trim();
+    if (firstPath && fileExists(firstPath)) {
+      return firstPath;
+    }
+  } catch (e) {
+    // If where fails, try simply checking if we can spawn it (may be in path but where failed)
+    try {
+      const { execSync } = require('child_process');
+      execSync(`${name} --version`, { stdio: 'ignore' });
+      return name; // Available globally
+    } catch (e2) {}
+  }
+
+  return null;
+}
+
+// Get validated tool paths
+function getToolPaths(settings) {
+  const hbPath = checkTool('HandBrakeCLI', settings.handbrakePath, [
+    path.join(app.getAppPath(), 'bin', 'HandBrakeCLI.exe'),
+    path.join(app.getAppPath(), 'HandBrakeCLI.exe'),
+    'C:\\Program Files\\Handbrake\\HandBrakeCLI.exe',
+    'C:\\Program Files\\HandBrakeCLI\\HandBrakeCLI.exe'
+  ]);
+
+  const miPath = checkTool('MediaInfo', settings.mediaInfoPath, [
+    path.join(app.getAppPath(), 'bin', 'MediaInfo.exe'),
+    path.join(app.getAppPath(), 'MediaInfo.exe'),
+    'C:\\Program Files\\MediaInfo\\MediaInfo.exe'
+  ]);
+
+  return { handbrake: hbPath, mediaInfo: miPath };
+}
+
+// IPC Handlers
+ipcMain.handle('get-settings', () => {
+  return loadSettings();
+});
+
+ipcMain.handle('save-settings', (event, settings) => {
+  return saveSettings(settings);
+});
+
+ipcMain.handle('check-tools', () => {
+  const settings = loadSettings();
+  const paths = getToolPaths(settings);
+  return {
+    handbrakeInstalled: !!paths.handbrake,
+    mediaInfoInstalled: !!paths.mediaInfo,
+    handbrakePath: paths.handbrake || '',
+    mediaInfoPath: paths.mediaInfo || ''
+  };
+});
+
+ipcMain.handle('select-directory', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory']
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths[0];
+});
+
+// Recursively scan directories for media files
+async function scanFolder(dirPath, rootPath = dirPath) {
+  let results = [];
+  const list = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  
+  const mediaExtensions = ['.mp4', '.mkv', '.avi', '.m4v', '.mov', '.ts', '.wmv', '.flv', '.webm', '.m2ts'];
+
+  for (const entry of list) {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      const subResults = await scanFolder(fullPath, rootPath);
+      results = results.concat(subResults);
+    } else if (entry.isFile()) {
+      const ext = path.extname(entry.name).toLowerCase();
+      if (mediaExtensions.includes(ext)) {
+        const stats = await fs.promises.stat(fullPath);
+        results.push({
+          name: entry.name,
+          fullPath: fullPath,
+          relativePath: path.relative(rootPath, fullPath),
+          sizeBytes: stats.size,
+          extension: ext
+        });
+      }
+    }
+  }
+  return results;
+}
+
+// Run MediaInfo on a file
+function runMediaInfo(mediaInfoPath, filePath) {
+  return new Promise((resolve) => {
+    // If mediaInfoPath is just 'MediaInfo', use exec; if it is a full path, use execFile
+    const isFullPath = path.isAbsolute(mediaInfoPath);
+    const cmd = isFullPath ? mediaInfoPath : 'MediaInfo';
+    const args = ['--Output=JSON', filePath];
+
+    const callback = (error, stdout, stderr) => {
+      if (error) {
+        console.error(`MediaInfo error for ${filePath}:`, error);
+        return resolve(null);
+      }
+      try {
+        const data = JSON.parse(stdout);
+        resolve(data);
+      } catch (err) {
+        console.error(`MediaInfo JSON parse error for ${filePath}:`, err);
+        resolve(null);
+      }
+    };
+
+    if (isFullPath) {
+      execFile(cmd, args, { maxBuffer: 1024 * 1024 * 10 }, callback);
+    } else {
+      // Escape paths for exec
+      exec(`"${cmd}" --Output=JSON "${filePath}"`, { maxBuffer: 1024 * 1024 * 10 }, callback);
+    }
+  });
+}
+
+// Scan directory and analyze files
+ipcMain.handle('scan-directory', async (event, dirPath) => {
+  const settings = loadSettings();
+  const tools = getToolPaths(settings);
+  
+  if (!tools.mediaInfo) {
+    throw new Error('MediaInfo is not installed or not in PATH.');
+  }
+
+  // 1. Gather all files
+  const files = await scanFolder(dirPath);
+
+  // 2. Query MediaInfo for each file using a concurrency pool
+  const results = [];
+  const limit = 10; // Concurrency limit
+  let index = 0;
+
+  async function worker() {
+    while (index < files.length) {
+      const fileIndex = index++;
+      const file = files[fileIndex];
+      
+      const mediaInfoData = await runMediaInfo(tools.mediaInfo, file.fullPath);
+      const analyzed = parseMediaInfo(file, mediaInfoData);
+      results[fileIndex] = analyzed;
+    }
+  }
+
+  const workers = Array(Math.min(limit, files.length)).fill(0).map(() => worker());
+  await Promise.all(workers);
+
+  return results;
+});
+
+// Parse MediaInfo JSON
+function parseMediaInfo(file, data) {
+  const result = {
+    ...file,
+    videoCodec: 'Unknown',
+    videoFormat: '',
+    audioStreams: [],
+    subtitleStreams: [],
+    isPlexOk: false,
+    plexIssues: []
+  };
+
+  if (!data || !data.media || !data.media.track) {
+    result.plexIssues.push('Could not parse media details');
+    return result;
+  }
+
+  const tracks = data.media.track;
+
+  for (const track of tracks) {
+    if (track['@type'] === 'General') {
+      if (track.Duration) {
+        const dur = parseFloat(track.Duration);
+        if (!isNaN(dur)) {
+          result.duration = dur > 10000 ? dur / 1000 : dur;
+        }
+      }
+    } else if (track['@type'] === 'Video') {
+      result.videoCodec = track.Format || 'Unknown';
+      result.videoFormat = track.Format_Commercial || track.Format || '';
+      if (track.Duration && !result.duration) {
+        const dur = parseFloat(track.Duration);
+        if (!isNaN(dur)) {
+          result.duration = dur > 10000 ? dur / 1000 : dur;
+        }
+      }
+    } else if (track['@type'] === 'Audio') {
+      const language = track.Language_String3 || track.Language || 'und';
+      const channels = track.Channels || 'Unknown';
+      result.audioStreams.push({
+        codec: track.Format || 'Unknown',
+        language: language,
+        channels: channels
+      });
+    } else if (track['@type'] === 'Text') {
+      const language = track.Language_String3 || track.Language || 'und';
+      result.subtitleStreams.push({
+        format: track.Format || 'Unknown',
+        language: language
+      });
+    }
+  }
+
+  // Plex Compatibility Rules (Green vs Red)
+  // 1. Container must be MP4 or MKV
+  const allowedExtensions = ['.mp4', '.mkv', '.m4v'];
+  if (!allowedExtensions.includes(file.extension.toLowerCase())) {
+    result.plexIssues.push(`Container (${file.extension}) is not MP4/MKV`);
+  }
+
+  // 2. Video Codec: H.264 (AVC) or H.265 (HEVC)
+  const allowedVideo = ['AVC', 'HEVC', 'H264', 'H265', 'x264', 'x265'];
+  const videoCodecUpper = result.videoCodec.toUpperCase();
+  const isVideoOk = allowedVideo.some(v => videoCodecUpper.includes(v));
+  if (!isVideoOk) {
+    result.plexIssues.push(`Video Codec (${result.videoCodec}) is not H.264/H.265`);
+  }
+
+  // 3. Audio Codec: AAC, AC3, EAC3, MP3
+  const allowedAudio = ['AAC', 'AC3', 'EAC3', 'E-AC-3', 'MPEG AUDIO', 'MP3', 'AC-3'];
+  for (let i = 0; i < result.audioStreams.length; i++) {
+    const stream = result.audioStreams[i];
+    const codecUpper = stream.codec.toUpperCase();
+    const isAudioOk = allowedAudio.some(a => codecUpper.includes(a));
+    if (!isAudioOk) {
+      result.plexIssues.push(`Audio stream #${i + 1} (${stream.codec}) is not AAC/AC3/EAC3/MP3`);
+    }
+  }
+
+  // 4. Subtitle Codec: SRT, WebVTT (or none)
+  const allowedSubtitles = ['UTF-8', 'SRT', 'WEBVTT', 'ASS', 'SSA']; // Wait, ASS/SSA was flagged as Red in requirements!
+  // The requirements say:
+  // "Subtitles: PGS, VOBSUB, ASS/SSA (image-based or styled subtitles which force video transcoding on many clients) are RED"
+  // So only SRT / UTF-8 / WebVTT are OK.
+  const allowedSubtitlesOk = ['UTF-8', 'SRT', 'WEBVTT'];
+  for (let i = 0; i < result.subtitleStreams.length; i++) {
+    const sub = result.subtitleStreams[i];
+    const formatUpper = sub.format.toUpperCase();
+    const isSubOk = allowedSubtitlesOk.some(s => formatUpper.includes(s));
+    if (!isSubOk) {
+      result.plexIssues.push(`Subtitle stream #${i + 1} (${sub.format}) is not SRT/WebVTT`);
+    }
+  }
+
+  result.isPlexOk = (result.plexIssues.length === 0);
+  return result;
+}
+
+// Transcode Queue & Concurrency State
+let activeJobs = new Map(); // key: fileId (fullPath), value: spawn process
+let pausedJobs = new Set(); // key: fileId (fullPath)
+let transcodeQueue = [];
+let maxEngines = 2;
+let isTranscodingActive = false;
+let currentConfig = null;
+let forceClose = false;
+
+// Suspend process helper
+function suspendProcess(pid) {
+  const cmd = `powershell -Command "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class P { [DllImport(\\\"ntdll.dll\\\")] public static extern int NtSuspendProcess(IntPtr h); }'; [P]::NtSuspendProcess((Get-Process -Id ${pid}).Handle)"`;
+  exec(cmd, (err) => {
+    if (err) console.error(`Failed to suspend process ${pid}:`, err);
+  });
+}
+
+// Resume process helper
+function resumeProcess(pid) {
+  const cmd = `powershell -Command "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class P { [DllImport(\\\"ntdll.dll\\\")] public static extern int NtResumeProcess(IntPtr h); }'; [P]::NtResumeProcess((Get-Process -Id ${pid}).Handle)"`;
+  exec(cmd, (err) => {
+    if (err) console.error(`Failed to resume process ${pid}:`, err);
+  });
+}
+
+// Stop Transcoding
+ipcMain.handle('stop-transcode', () => {
+  isTranscodingActive = false;
+  transcodeQueue = [];
+  pausedJobs.clear();
+  
+  // Kill all running jobs
+  for (const [filePath, proc] of activeJobs.entries()) {
+    try {
+      // On Windows, kill process tree
+      spawn('taskkill', ['/F', '/T', '/PID', proc.pid]);
+      proc.kill();
+    } catch (e) {
+      console.error(`Failed to kill process for ${filePath}:`, e);
+    }
+  }
+  activeJobs.clear();
+  return { success: true };
+});
+
+// Pause individual job
+ipcMain.handle('pause-job', (event, filePath) => {
+  const proc = activeJobs.get(filePath);
+  if (proc) {
+    suspendProcess(proc.pid);
+    pausedJobs.add(filePath);
+    return { success: true };
+  }
+  return { success: false, error: 'Job not active' };
+});
+
+// Resume individual job
+ipcMain.handle('resume-job', (event, filePath) => {
+  const proc = activeJobs.get(filePath);
+  if (proc) {
+    resumeProcess(proc.pid);
+    pausedJobs.delete(filePath);
+    return { success: true };
+  }
+  return { success: false, error: 'Job not active' };
+});
+
+// Stop individual job
+ipcMain.handle('stop-job', (event, filePath) => {
+  const proc = activeJobs.get(filePath);
+  if (proc) {
+    try {
+      spawn('taskkill', ['/F', '/T', '/PID', proc.pid]);
+      proc.kill();
+    } catch (e) {
+      console.error(`Failed to kill job ${filePath}:`, e);
+    }
+    activeJobs.delete(filePath);
+    pausedJobs.delete(filePath);
+    return { success: true };
+  }
+  return { success: false, error: 'Job not active' };
+});
+
+// Pause all active engines
+ipcMain.handle('pause-all', () => {
+  for (const [filePath, proc] of activeJobs.entries()) {
+    if (!pausedJobs.has(filePath)) {
+      suspendProcess(proc.pid);
+      pausedJobs.add(filePath);
+    }
+  }
+  return { success: true };
+});
+
+// Resume all active engines
+ipcMain.handle('resume-all', () => {
+  for (const [filePath, proc] of activeJobs.entries()) {
+    if (pausedJobs.has(filePath)) {
+      resumeProcess(proc.pid);
+      pausedJobs.delete(filePath);
+    }
+  }
+  return { success: true };
+});
+
+// Confirm application close (and terminate active transcodes nicely)
+ipcMain.handle('confirm-app-close', (event, confirm) => {
+  if (confirm) {
+    forceClose = true;
+    isTranscodingActive = false;
+    transcodeQueue = [];
+    pausedJobs.clear();
+    
+    // Kill all running jobs nicely
+    for (const [filePath, proc] of activeJobs.entries()) {
+      try {
+        spawn('taskkill', ['/F', '/T', '/PID', proc.pid]);
+        proc.kill();
+      } catch (e) {
+        console.error(`Failed to kill process for ${filePath} during close:`, e);
+      }
+    }
+    activeJobs.clear();
+    app.quit();
+  }
+  return { success: true };
+});
+
+// Start Transcoding
+ipcMain.handle('start-transcode', async (event, files, config) => {
+  if (isTranscodingActive) {
+    return { success: false, message: 'Transcode is already running.' };
+  }
+
+  const settings = loadSettings();
+  const tools = getToolPaths(settings);
+
+  if (!tools.handbrake) {
+    throw new Error('HandBrakeCLI is not installed or not in PATH.');
+  }
+
+  isTranscodingActive = true;
+  currentConfig = config;
+  maxEngines = Math.max(1, Math.min(8, config.engines || settings.engines));
+  transcodeQueue = [...files]; // Queue is array of file records
+
+  // Ensure Temp Directory exists if Option #1 (Replace) is used
+  if (config.mode === 'replace') {
+    const tempDir = settings.tempDir || 'C:\\TempHBMG';
+    if (!fs.existsSync(tempDir)) {
+      try {
+        fs.mkdirSync(tempDir, { recursive: true });
+      } catch (err) {
+        console.error(`Failed to create temp directory ${tempDir}:`, err);
+        isTranscodingActive = false;
+        throw new Error(`Failed to create Temp Directory ${tempDir}. Check permissions.`);
+      }
+    }
+  }
+
+  // Start workers
+  for (let i = 0; i < Math.min(maxEngines, transcodeQueue.length); i++) {
+    processNextInQueue(tools.handbrake, settings);
+  }
+
+  return { success: true };
+});
+
+// Process Next Item in Queue
+async function processNextInQueue(hbPath, settings) {
+  if (!isTranscodingActive || transcodeQueue.length === 0) {
+    if (activeJobs.size === 0 && isTranscodingActive) {
+      isTranscodingActive = false;
+      mainWindow.webContents.send('transcode-queue-complete');
+    }
+    return;
+  }
+
+  const file = transcodeQueue.shift();
+  const filePath = file.fullPath;
+  
+  // Create output path based on rules
+  let tempOutPath = '';
+  let finalOutPath = '';
+
+  const ext = '.mkv'; // Default fallback output extension
+  // Use configured preset format if available, else default to .mkv
+  const outputExtension = (currentConfig.presetFile && currentConfig.presetFile.toLowerCase().endsWith('.mp4')) ? '.mp4' : '.mkv';
+
+  const baseNameWithoutExt = path.basename(filePath, path.extname(filePath));
+  const outputFileName = baseNameWithoutExt + outputExtension;
+
+  if (currentConfig.mode === 'replace') {
+    const tempDir = settings.tempDir || 'C:\\TempHBMG';
+    if (currentConfig.replaceAction === 'move') {
+      // Option #1 - Move: Transcode to TempDir\Filename.EXT (flat)
+      tempOutPath = path.join(tempDir, outputFileName);
+      finalOutPath = path.join(path.dirname(filePath), outputFileName);
+    } else {
+      // Option #1 - Copy: Transcode to TempDir\Foldername\Filename.EXT
+      // Re-create folder structure inside Temp directory
+      // We will place it under TempDir\FolderName\Filename.EXT
+      const parentDirName = path.basename(path.dirname(filePath));
+      const targetTempDir = path.join(tempDir, parentDirName);
+      
+      try {
+        fs.mkdirSync(targetTempDir, { recursive: true });
+      } catch (err) {}
+      
+      tempOutPath = path.join(targetTempDir, outputFileName);
+      finalOutPath = path.join(path.dirname(filePath), outputFileName);
+    }
+  } else {
+    // Option #2 - Transcode to Directory
+    // Re-create directory structure on destination folder
+    // Relative path from source root directory
+    const destDir = currentConfig.destinationDir;
+    const finalDir = path.join(destDir, path.dirname(file.relativePath));
+    
+    try {
+      fs.mkdirSync(finalDir, { recursive: true });
+    } catch (err) {}
+
+    tempOutPath = path.join(finalDir, outputFileName);
+    finalOutPath = tempOutPath; // No copy/move step needed, goes direct
+  }
+
+  // Construct HandBrake Arguments
+  const args = ['-i', filePath, '-o', tempOutPath];
+
+  // Apply Presets or custom per-file transcode configs
+  if (currentConfig.presetFile && currentConfig.presetName) {
+    args.push('--preset-import-file', currentConfig.presetFile);
+    args.push('-Z', currentConfig.presetName);
+  } else {
+    // Get file specific config or default fallback
+    const fileConfig = (currentConfig.fileConfigs && currentConfig.fileConfigs[filePath]) || {
+      videoCodec: 'h264',
+      quality: 20,
+      framerate: 'constant',
+      audioCodec: 'AAC',
+      audioSource1: file.audioStreams && file.audioStreams.length > 0 ? '1' : 'none',
+      audioSource2: 'none',
+      subtitleSource1: 'none',
+      subtitleSource2: 'none'
+    };
+
+    // Container format
+    args.push('-f', 'av_mkv');
+
+    // Video options
+    const encoder = fileConfig.videoCodec === 'h265' ? 'x265' : 'x264';
+    args.push('-e', encoder);
+    args.push('-q', fileConfig.quality.toString());
+
+    if (fileConfig.framerate === 'constant') {
+      args.push('--cfr');
+    } else {
+      args.push('--vfr');
+    }
+
+    // Audio options
+    const selectedAudioTracks = [];
+    const audioEncoders = [];
+    const encMap = { 'AAC': 'av_aac', 'AC3': 'ac3', 'EAC3': 'eac3', 'MP3': 'mp3', 'Copy': 'copy' };
+    const encoderName = encMap[fileConfig.audioCodec] || 'av_aac';
+
+    if (fileConfig.audioSource1 !== 'none') {
+      selectedAudioTracks.push(fileConfig.audioSource1);
+      audioEncoders.push(encoderName);
+    }
+    if (fileConfig.audioSource2 !== 'none') {
+      selectedAudioTracks.push(fileConfig.audioSource2);
+      audioEncoders.push(encoderName);
+    }
+
+    if (selectedAudioTracks.length > 0) {
+      args.push('-a', selectedAudioTracks.join(','));
+      args.push('-E', audioEncoders.join(','));
+    } else {
+      args.push('-a', 'none');
+    }
+
+    // Subtitle options
+    const selectedSubTracks = [];
+    if (fileConfig.subtitleSource1 !== 'none') {
+      selectedSubTracks.push(fileConfig.subtitleSource1);
+    }
+    if (fileConfig.subtitleSource2 !== 'none') {
+      selectedSubTracks.push(fileConfig.subtitleSource2);
+    }
+
+    if (selectedSubTracks.length > 0) {
+      args.push('-s', selectedSubTracks.join(','));
+    } else {
+      args.push('-s', 'none');
+    }
+  }
+
+  mainWindow.webContents.send('transcode-log', {
+    filePath: filePath,
+    text: `Starting encode for: ${file.name}\nCommand: HandBrakeCLI ${args.join(' ')}\n`
+  });
+
+  const hbProc = spawn(hbPath, args);
+  activeJobs.set(filePath, hbProc);
+
+  // Send initial progress update
+  mainWindow.webContents.send('transcode-progress', {
+    filePath: filePath,
+    percent: 0,
+    fps: 0,
+    avgFps: 0,
+    eta: 'Calculating...'
+  });
+
+  // Parse stdout chunk by chunk
+  let buffer = '';
+  hbProc.stdout.on('data', (data) => {
+    buffer += data.toString();
+    // Split by \r or \n since HandBrake uses \r to overwrite progress
+    const lines = buffer.split(/[\r\n]+/);
+    // Keep the last incomplete part in buffer
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (line.trim()) {
+        mainWindow.webContents.send('transcode-log', { filePath: filePath, text: line });
+        
+        // Parse progress line:
+        // Encoding: task 1 of 1, 12.34 % (15.54 fps, avg 15.22 fps, ETA 00h02m10s)
+        const percentMatch = line.match(/Encoding: task \d+ of \d+,\s*([\d\.]+)\s*%/);
+        if (percentMatch) {
+          const percent = parseFloat(percentMatch[1]);
+          let fps = 0;
+          let avgFps = 0;
+          let eta = 'Calculating...';
+
+          const fpsMatch = line.match(/\(\s*([\d\.]+)\s*fps/);
+          if (fpsMatch) fps = parseFloat(fpsMatch[1]);
+
+          const avgFpsMatch = line.match(/avg\s*([\d\.]+)\s*fps/);
+          if (avgFpsMatch) avgFps = parseFloat(avgFpsMatch[1]);
+
+          const etaMatch = line.match(/ETA\s*([^\)]+)/);
+          if (etaMatch) eta = etaMatch[1].trim();
+
+          mainWindow.webContents.send('transcode-progress', {
+            filePath: filePath,
+            percent: percent,
+            fps: fps,
+            avgFps: avgFps,
+            eta: eta
+          });
+        }
+      }
+    }
+  });
+
+  hbProc.stderr.on('data', (data) => {
+    mainWindow.webContents.send('transcode-log', {
+      filePath: filePath,
+      text: `[Error] ${data.toString()}`
+    });
+  });
+
+  hbProc.on('close', async (code) => {
+    activeJobs.delete(filePath);
+    
+    if (code === 0) {
+      mainWindow.webContents.send('transcode-log', {
+        filePath: filePath,
+        text: `Encoding completed successfully (Code: ${code}).\n`
+      });
+
+      // Execute file management steps (Move / Copy for Option #1)
+      let fileOpSuccess = true;
+      try {
+        if (currentConfig.mode === 'replace') {
+          if (currentConfig.replaceAction === 'move') {
+            // Delete original file
+            if (fs.existsSync(filePath)) {
+              mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Deleting original file: ${filePath}\n` });
+              fs.unlinkSync(filePath);
+            }
+            // Move transcoded file
+            mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Moving transcoded file to original path: ${finalOutPath}\n` });
+            fs.renameSync(tempOutPath, finalOutPath);
+          } else {
+            // Copy transcoded file (Option #2 Copy replaces original, but retains the file in TempHBMG\FolderName\Filename.EXT)
+            mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Replacing original file via Copy: ${finalOutPath}\n` });
+            fs.copyFileSync(tempOutPath, finalOutPath);
+          }
+        } else {
+          // Option #1 (Transcode to custom directory) automatic post-transcode action
+          if (currentConfig.postAction === 'move') {
+            const originalReplacePath = path.join(path.dirname(filePath), outputFileName);
+            if (fs.existsSync(filePath)) {
+              mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `[Post-Action] Deleting original file: ${filePath}\n` });
+              fs.unlinkSync(filePath);
+            }
+            mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `[Post-Action] Moving transcoded file: ${tempOutPath} -> ${originalReplacePath}\n` });
+            fs.renameSync(tempOutPath, originalReplacePath);
+            finalOutPath = originalReplacePath;
+          } else if (currentConfig.postAction === 'copy') {
+            const originalReplacePath = path.join(path.dirname(filePath), outputFileName);
+            mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `[Post-Action] Replacing original file via Copy: ${originalReplacePath}\n` });
+            fs.copyFileSync(tempOutPath, originalReplacePath);
+            finalOutPath = originalReplacePath;
+          }
+        }
+      } catch (err) {
+        fileOpSuccess = false;
+        mainWindow.webContents.send('transcode-log', {
+          filePath: filePath,
+          text: `[File Operation Failed] ${err.message}\n`
+        });
+      }
+
+      mainWindow.webContents.send('transcode-file-complete', {
+        filePath: filePath,
+        success: fileOpSuccess,
+        finalPath: finalOutPath
+      });
+    } else {
+      mainWindow.webContents.send('transcode-log', {
+        filePath: filePath,
+        text: `Encoding failed with exit code: ${code}\n`
+      });
+
+      mainWindow.webContents.send('transcode-file-complete', {
+        filePath: filePath,
+        success: false,
+        error: `Exit code ${code}`
+      });
+
+      // Cleanup failed partial output
+      try {
+        if (fs.existsSync(tempOutPath)) {
+          fs.unlinkSync(tempOutPath);
+        }
+      } catch(e) {}
+    }
+
+    // Process next item
+    processNextInQueue(hbPath, settings);
+  });
+}
+
+// Split command line arguments respecting quotes
+function parseRawCli(rawString) {
+  const args = [];
+  let current = '';
+  let inQuotes = false;
+  let quoteChar = null;
+
+  for (let i = 0; i < rawString.length; i++) {
+    const char = rawString[i];
+    if ((char === '"' || char === "'") && (i === 0 || rawString[i - 1] !== '\\')) {
+      if (inQuotes && char === quoteChar) {
+        inQuotes = false;
+        quoteChar = null;
+      } else if (!inQuotes) {
+        inQuotes = true;
+        quoteChar = char;
+      }
+    } else if (char === ' ' && !inQuotes) {
+      if (current.trim()) {
+        args.push(current);
+        current = '';
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) {
+    args.push(current);
+  }
+  return args;
+}
+
+// Manual trigger for post-transcode Move/Copy on Option #2
+ipcMain.handle('move-copy-files', async (event, files, config) => {
+  const results = [];
+  const mode = config.replaceAction; // 'move' or 'copy'
+  
+  for (const file of files) {
+    const filePath = file.fullPath;
+    
+    // Determine the transcode output location under Option #2
+    const outputExtension = (config.presetFile && config.presetFile.toLowerCase().endsWith('.mp4')) ? '.mp4' : '.mkv';
+    const baseNameWithoutExt = path.basename(filePath, path.extname(filePath));
+    const outputFileName = baseNameWithoutExt + outputExtension;
+    
+    const finalDir = path.join(config.destinationDir, path.dirname(file.relativePath));
+    const transcodedFileLocation = path.join(finalDir, outputFileName);
+    
+    // Original replaced location
+    const originalReplacePath = path.join(path.dirname(filePath), outputFileName);
+
+    if (!fs.existsSync(transcodedFileLocation)) {
+      results.push({ filePath, success: false, error: 'Transcoded file not found at expected location.' });
+      continue;
+    }
+
+    try {
+      if (mode === 'move') {
+        // Delete original
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+        // Move transcoded file
+        fs.renameSync(transcodedFileLocation, originalReplacePath);
+      } else {
+        // Copy transcoded file
+        fs.copyFileSync(transcodedFileLocation, originalReplacePath);
+      }
+      results.push({ filePath, success: true });
+    } catch (err) {
+      results.push({ filePath, success: false, error: err.message });
+    }
+  }
+
+  return results;
+});
+
+// Parse preset list from imported preset file
+ipcMain.handle('parse-preset-file', async (event, filePath) => {
+  try {
+    const data = fs.readFileSync(filePath, 'utf8');
+    const presets = JSON.parse(data);
+    const names = [];
+
+    function extractNames(node) {
+      if (!node) return;
+      if (node.PresetName || node.Name) {
+        names.push(node.PresetName || node.Name);
+      }
+      if (node.PresetList && Array.isArray(node.PresetList)) {
+        node.PresetList.forEach(extractNames);
+      }
+      if (node.Children && Array.isArray(node.Children)) {
+        node.Children.forEach(extractNames);
+      }
+    }
+
+    if (Array.isArray(presets)) {
+      presets.forEach(extractNames);
+    } else {
+      extractNames(presets);
+    }
+
+    return { success: true, presets: names };
+  } catch (err) {
+    console.error('Failed to parse preset file:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+// Register preset parser handler
+ipcMain.handle('parse-preset-file-ipc', (event, filePath) => {
+  return ipcMain.emit('parse-preset-file', event, filePath);
+});
+
+// Re-write parse-preset-file handler to register correctly
+ipcMain.removeHandler('parse-preset-file-ipc');
+
+// Create MainWindow
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 1024,
+    minHeight: 700,
+    backgroundColor: '#1c1e22',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  mainWindow.setMenuBarVisibility(false);
+
+  // Check if running in development mode
+  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devUrl) {
+    mainWindow.loadURL(devUrl);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+  }
+
+  mainWindow.on('close', (e) => {
+    if (isTranscodingActive && !forceClose) {
+      e.preventDefault();
+      mainWindow.webContents.send('app-close-request');
+    }
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+app.whenReady().then(() => {
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// Generate Sample Comparison
+ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, rf }) => {
+  const settings = loadSettings();
+  const tools = getToolPaths(settings);
+  if (!tools.handbrake) {
+    throw new Error('HandBrakeCLI not found. Please install it first.');
+  }
+
+  const tempDir = settings.tempDir || 'C:\\TempHBMG';
+  if (!fs.existsSync(tempDir)) {
+    try {
+      fs.mkdirSync(tempDir, { recursive: true });
+    } catch (e) {
+      console.error('Failed to create temp dir:', e);
+    }
+  }
+
+  const now = Date.now();
+  const refPath = path.join(tempDir, `sample_ref_${now}.mp4`);
+  const samplePath = path.join(tempDir, `sample_out_${now}.mp4`);
+
+  const refArgs = [
+    '-i', filePath,
+    '-o', refPath,
+    '--start-at', `duration:${timestamp}`,
+    '--stop-at', 'duration:1',
+    '-f', 'av_mkv',
+    '-e', 'x264',
+    '-q', '10', // lossless/very high quality reference
+    '--cfr'
+  ];
+
+  const sampleArgs = [
+    '-i', filePath,
+    '-o', samplePath,
+    '--start-at', `duration:${timestamp}`,
+    '--stop-at', 'duration:1',
+    '-f', 'av_mkv',
+    '-e', codec === 'h265' ? 'x265' : 'x264',
+    '-q', rf.toString(),
+    '--cfr'
+  ];
+
+  const runCli = (args) => new Promise((resolve, reject) => {
+    const p = spawn(tools.handbrake, args);
+    let errorOutput = '';
+    p.stderr.on('data', (data) => {
+      errorOutput += data.toString();
+    });
+    p.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`HandBrake exited with code ${code}. Details: ${errorOutput}`));
+    });
+  });
+
+  try {
+    await Promise.all([runCli(refArgs), runCli(sampleArgs)]);
+
+    const refData = fs.readFileSync(refPath).toString('base64');
+    const sampleData = fs.readFileSync(samplePath).toString('base64');
+
+    fs.unlink(refPath, () => {});
+    fs.unlink(samplePath, () => {});
+
+    return {
+      success: true,
+      refUri: `data:video/mp4;base64,${refData}`,
+      sampleUri: `data:video/mp4;base64,${sampleData}`
+    };
+  } catch (err) {
+    console.error('Sample generation failed:', err);
+    if (fs.existsSync(refPath)) fs.unlink(refPath, () => {});
+    if (fs.existsSync(samplePath)) fs.unlink(samplePath, () => {});
+    return { success: false, error: err.message };
+  }
+});
+
+// Update checking handlers
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    const https = require('https');
+    const options = {
+      hostname: 'api.github.com',
+      path: '/repos/EndZz-/HBMinigun/releases/latest',
+      headers: { 'User-Agent': 'HBMiniGun-Update-Checker' }
+    };
+
+    const fetchLatestRelease = () => new Promise((resolve, reject) => {
+      https.get(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            resolve(JSON.parse(data));
+          } else {
+            reject(new Error(`Failed to fetch release: status code ${res.statusCode}`));
+          }
+        });
+      }).on('error', (err) => reject(err));
+    });
+
+    const release = await fetchLatestRelease();
+    const latestTag = release.tag_name;
+    const currentVersion = "v0.1";
+
+    const cleanVersion = (v) => v.replace(/^v/, '').trim();
+    const semverCompare = (v1, v2) => {
+      const parts1 = cleanVersion(v1).split('.').map(Number);
+      const parts2 = cleanVersion(v2).split('.').map(Number);
+      for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+        const p1 = parts1[i] || 0;
+        const p2 = parts2[i] || 0;
+        if (p1 > p2) return 1;
+        if (p1 < p2) return -1;
+      }
+      return 0;
+    };
+
+    const hasUpdate = semverCompare(latestTag, currentVersion) > 0;
+    let downloadUrl = null;
+    if (release.assets && Array.isArray(release.assets)) {
+      const asset = release.assets.find(a => a.name.toLowerCase().endsWith('.exe'));
+      if (asset) {
+        downloadUrl = asset.browser_download_url;
+      }
+    }
+
+    return {
+      hasUpdate,
+      latestVersion: latestTag,
+      releaseNotes: release.body || '',
+      downloadUrl
+    };
+  } catch (err) {
+    console.error('Update check failed:', err);
+    return { hasUpdate: false, error: err.message };
+  }
+});
+
+ipcMain.handle('download-and-install-update', async (event, downloadUrl) => {
+  if (!downloadUrl) {
+    throw new Error('Download URL is required.');
+  }
+
+  const https = require('https');
+  const os = require('os');
+  const tempDir = os.tmpdir();
+  const installerPath = path.join(tempDir, `HBMiniGun_setup_${Date.now()}.exe`);
+
+  const downloadFile = (url, dest) => new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+    const request = (targetUrl) => {
+      https.get(targetUrl, { headers: { 'User-Agent': 'HBMiniGun-Updater' } }, (res) => {
+        if (res.statusCode === 302 || res.statusCode === 301) {
+          request(res.headers.location);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`Failed to download update: status code ${res.statusCode}`));
+          return;
+        }
+        res.pipe(file);
+        file.on('finish', () => {
+          file.close();
+          resolve();
+        });
+      }).on('error', (err) => {
+        fs.unlink(dest, () => {});
+        reject(err);
+      });
+    };
+    request(url);
+  });
+
+  try {
+    await downloadFile(downloadUrl, installerPath);
+
+    const child = spawn(installerPath, [], {
+      detached: true,
+      stdio: 'ignore'
+    });
+    child.unref();
+
+    app.quit();
+    return { success: true };
+  } catch (err) {
+    console.error('Update download/install failed:', err);
+    return { success: false, error: err.message };
+  }
+});
