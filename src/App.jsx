@@ -177,9 +177,9 @@ export default function App() {
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
   const [sampleFile, setSampleFile] = useState(null);
   const [sampleConfig, setSampleConfig] = useState(null);
-  const [directoryOptionsCollapsed, setDirectoryOptionsCollapsed] = useState(false);
-  const [presetProfileCollapsed, setPresetProfileCollapsed] = useState(false);
-  const [batchApplyCollapsed, setBatchApplyCollapsed] = useState(false);
+  const [directoryOptionsCollapsed, setDirectoryOptionsCollapsed] = useState(true);
+  const [presetProfileCollapsed, setPresetProfileCollapsed] = useState(true);
+  const [batchApplyCollapsed, setBatchApplyCollapsed] = useState(true);
   const [autoScanCollapsed, setAutoScanCollapsed] = useState(true);
   const [autoRescanInterval, setAutoRescanInterval] = useState(0); // minutes, 0 means disabled
   const [autoAddToQueue, setAutoAddToQueue] = useState(false);
@@ -235,7 +235,7 @@ export default function App() {
         setUpdateModalOpen(true);
       } else {
         if (!silent) {
-          showToast('Latest Version', 'You are running the latest version of HB Minigun (v0.2.4).', 'success');
+          showToast('Latest Version', 'You are running the latest version of HB Minigun (v0.2.5).', 'success');
         }
       }
     } catch (err) {
@@ -1067,6 +1067,38 @@ export default function App() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   };
 
+  const estimateTranscodedSize = (file, config) => {
+    const originalSize = file.sizeBytes;
+    const rf = config.quality || 20;
+    const codec = config.videoCodec || 'h264';
+    
+    // Base ratio model: h265 is more efficient
+    const isH265 = codec === 'h265';
+    const refRF = isH265 ? 24 : 22;
+    const baseRatio = isH265 ? 0.22 : 0.32;
+    
+    // Logarithmic scaling based on RF (each change of 6 RF steps doubles/halves size)
+    const rfDiff = refRF - rf;
+    let ratio = baseRatio * Math.pow(2, rfDiff / 6);
+    
+    // Audio factor: AAC is typically very small. Copy keeps original audio size.
+    let audioFactor = 1.0;
+    if (config.audioCodec === 'AAC') {
+      audioFactor = 0.85; // AAC transcode savings
+    } else if (config.audioCodec === 'Copy') {
+      audioFactor = 1.05; // Keep original audio
+    } else {
+      audioFactor = 0.95; // AC3/EAC3
+    }
+    
+    ratio *= audioFactor;
+    
+    // Clamp ratio between 0.05 (5%) and 1.5 (150%) of original size
+    ratio = Math.max(0.05, Math.min(1.5, ratio));
+    
+    return originalSize * ratio;
+  };
+
   // Modal actions
   const openDetails = (file) => {
     setDetailsFile(file);
@@ -1125,7 +1157,7 @@ export default function App() {
         <div className="logo-section">
           <FileVideo size={20} className="text-accent" style={{ color: 'var(--accent)' }} />
           <h1>HB Minigun</h1>
-          <span style={{ background: 'rgba(0, 132, 255, 0.15)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 'bold' }}>v0.2.4</span>
+          <span style={{ background: 'rgba(0, 132, 255, 0.15)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 'bold' }}>v0.2.5</span>
         </div>
         <div className="header-actions">
           {isScanning && (
@@ -1254,6 +1286,7 @@ export default function App() {
                     <th>Subtitle 1</th>
                     <th>Subtitle 2</th>
                     <th>Plex Playback</th>
+                    <th>Est. Size</th>
                     <th>Quality Check</th>
                   </tr>
                 </thead>
@@ -1470,6 +1503,23 @@ export default function App() {
                               Incompatible
                             </span>
                           )}
+                        </td>
+
+                        {/* Estimated Size */}
+                        <td>
+                          {(() => {
+                            const estSize = estimateTranscodedSize(file, config);
+                            const percent = Math.round((estSize / file.sizeBytes) * 100);
+                            const diffPercent = percent - 100;
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <strong style={{ color: 'var(--accent)', fontSize: '11px' }}>{formatBytes(estSize)}</strong>
+                                <span style={{ color: diffPercent < 0 ? '#4caf50' : '#f44336', fontSize: '10.5px', fontWeight: 'bold' }}>
+                                  {diffPercent < 0 ? `${diffPercent}%` : `+${diffPercent}%`}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Sample Preview button */}
@@ -2232,7 +2282,7 @@ export default function App() {
             </div>
             <div className="modal-body" style={{ maxHeight: 'none' }}>
               <div style={{ marginBottom: '16px' }}>
-                A newer version <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{updateInfo.latestVersion}</strong> is available (current: <strong>v0.2.4</strong>).
+                A newer version <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{updateInfo.latestVersion}</strong> is available (current: <strong>v0.2.5</strong>).
               </div>
 
               <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 'bold' }}>Release Notes</div>
