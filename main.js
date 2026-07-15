@@ -1052,6 +1052,8 @@ ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, r
 });
 
 // Update checking handlers
+ipcMain.handle('get-app-version', () => app.getVersion());
+
 ipcMain.handle('check-for-updates', async () => {
   try {
     const https = require('https');
@@ -1151,7 +1153,7 @@ ipcMain.handle('download-and-install-update', async (event, downloadUrl) => {
   try {
     await downloadFile(downloadUrl, installerPath);
 
-    const child = spawn(installerPath, [], {
+    const child = spawn(installerPath, ['/S'], {
       detached: true,
       stdio: 'ignore'
     });

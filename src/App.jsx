@@ -189,6 +189,7 @@ export default function App() {
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
   const [downloadError, setDownloadError] = useState(null);
+  const [appVersion, setAppVersion] = useState('');
 
   // Transcoding Config
   const [enginesCount, setEnginesCount] = useState(2);
@@ -235,7 +236,7 @@ export default function App() {
         setUpdateModalOpen(true);
       } else {
         if (!silent) {
-          showToast('Latest Version', 'You are running the latest version of HB Minigun (v0.3.0).', 'success');
+          showToast('Latest Version', `You are running the latest version of HB Minigun (v${appVersion}).`, 'success');
         }
       }
     } catch (err) {
@@ -263,6 +264,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    window.api.getAppVersion().then(v => setAppVersion(v));
     const timer = setTimeout(() => {
       triggerUpdateCheck(true);
     }, 3000);
@@ -1157,7 +1159,7 @@ export default function App() {
         <div className="logo-section">
           <FileVideo size={20} className="text-accent" style={{ color: 'var(--accent)' }} />
           <h1>HB Minigun</h1>
-          <span style={{ background: 'rgba(0, 132, 255, 0.15)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 'bold' }}>v0.3.0</span>
+          <span style={{ background: 'rgba(0, 132, 255, 0.15)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 'bold' }}>v{appVersion}</span>
         </div>
         <div className="header-actions">
           {isScanning && (
@@ -2286,7 +2288,7 @@ export default function App() {
             </div>
             <div className="modal-body" style={{ maxHeight: 'none' }}>
               <div style={{ marginBottom: '16px' }}>
-                A newer version <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{updateInfo.latestVersion}</strong> is available (current: <strong>v0.3.0</strong>).
+                A newer version <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{updateInfo.latestVersion}</strong> is available (current: <strong>v{appVersion}</strong>).
               </div>
 
               <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 'bold' }}>Release Notes</div>

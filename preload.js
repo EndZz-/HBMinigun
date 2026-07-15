@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('api', {
   resumeAll: () => ipcRenderer.invoke('resume-all'),
   confirmAppClose: (confirm) => ipcRenderer.invoke('confirm-app-close', confirm),
   generateSamples: (args) => ipcRenderer.invoke('generate-samples', args),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   downloadAndInstallUpdate: (downloadUrl) => ipcRenderer.invoke('download-and-install-update', downloadUrl),
   
