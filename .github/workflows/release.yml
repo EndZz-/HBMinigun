@@ -34,7 +34,7 @@ jobs:
       - name: Build & Publish Electron Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder build --win --x64 --publish always
+        run: npx electron-builder build --win --x64 --publish onTagOrDraft
 
       - name: Publish Draft Release
         env:
