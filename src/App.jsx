@@ -235,7 +235,7 @@ export default function App() {
         setUpdateModalOpen(true);
       } else {
         if (!silent) {
-          showToast('Latest Version', 'You are running the latest version of HB Minigun (v0.2.9).', 'success');
+          showToast('Latest Version', 'You are running the latest version of HB Minigun (v0.3.0).', 'success');
         }
       }
     } catch (err) {
@@ -1157,7 +1157,7 @@ export default function App() {
         <div className="logo-section">
           <FileVideo size={20} className="text-accent" style={{ color: 'var(--accent)' }} />
           <h1>HB Minigun</h1>
-          <span style={{ background: 'rgba(0, 132, 255, 0.15)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 'bold' }}>v0.2.9</span>
+          <span style={{ background: 'rgba(0, 132, 255, 0.15)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 'bold' }}>v0.3.0</span>
         </div>
         <div className="header-actions">
           {isScanning && (
@@ -1565,15 +1565,15 @@ export default function App() {
             </div>
           </div>
 
-          {/* Directory Options */}
+          {/* Transcode Directory Options */}
           <div 
             className="section-title"
             onClick={() => setDirectoryOptionsCollapsed(!directoryOptionsCollapsed)}
             style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Folder size={14} />
-              Directory Options
+              <FolderOpen size={14} />
+              Transcode Directory Options
             </div>
             {directoryOptionsCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
           </div>
@@ -1720,7 +1720,7 @@ export default function App() {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Clock size={14} />
-              Directory Auto-Scan
+              Periodic Scan
             </div>
             {autoScanCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
           </div>
@@ -1769,35 +1769,7 @@ export default function App() {
             </div>
           )}
 
-          {/* HandBrake Encoder Settings */}
-          <div 
-            className="section-title"
-            onClick={() => setPresetProfileCollapsed(!presetProfileCollapsed)}
-            style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Sliders size={14} />
-              HandBrake Preset Profile
-            </div>
-            {presetProfileCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-          </div>
 
-          {!presetProfileCollapsed && (
-            <div className="form-group">
-            <label>Selected Custom Preset File</label>
-            <div className="relative-dir-box" title={settings.handbrakePresetPath}>
-              {settings.handbrakePresetPath ? settings.handbrakePresetPath : 'None selected (using Manual/Fallback)'}
-            </div>
-            {settings.handbrakePresetName && (
-              <span className="text-muted" style={{ fontSize: '11px', marginTop: '4px', display: 'block' }}>
-                Active Preset: <strong style={{ color: 'var(--accent)' }}>{settings.handbrakePresetName}</strong>
-              </span>
-            )}
-            <span className="text-muted" style={{ fontSize: '10.5px', marginTop: '6px', display: 'block' }}>
-              Import presets JSON files under the <strong>Settings</strong> window.
-            </span>
-          </div>
-        )}
           
           {/* Batch Apply Panel */}
           <div 
@@ -1976,6 +1948,38 @@ export default function App() {
               Apply to Selected ({selectedPaths.size})
             </button>
           </div>
+          )}
+
+          {/* HandBrake Encoder Settings */}
+          <div 
+            className="section-title"
+            onClick={() => setPresetProfileCollapsed(!presetProfileCollapsed)}
+            style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Sliders size={14} />
+              HandBrake Preset Profile
+            </div>
+            {presetProfileCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+          </div>
+
+          {!presetProfileCollapsed && (
+            <div style={{ background: 'rgba(28, 32, 42, 0.4)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '6px' }}>
+              <div className="form-group">
+                <label>Selected Custom Preset File</label>
+                <div className="relative-dir-box" title={settings.handbrakePresetPath}>
+                  {settings.handbrakePresetPath ? settings.handbrakePresetPath : 'None selected (using Manual/Fallback)'}
+                </div>
+                {settings.handbrakePresetName && (
+                  <span className="text-muted" style={{ fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                    Active Preset: <strong style={{ color: 'var(--accent)' }}>{settings.handbrakePresetName}</strong>
+                  </span>
+                )}
+                <span className="text-muted" style={{ fontSize: '10.5px', marginTop: '6px', display: 'block' }}>
+                  Import presets JSON files under the <strong>Settings</strong> window.
+                </span>
+              </div>
+            </div>
           )}
           
           {/* Action Trigger Buttons */}
@@ -2282,7 +2286,7 @@ export default function App() {
             </div>
             <div className="modal-body" style={{ maxHeight: 'none' }}>
               <div style={{ marginBottom: '16px' }}>
-                A newer version <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{updateInfo.latestVersion}</strong> is available (current: <strong>v0.2.9</strong>).
+                A newer version <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{updateInfo.latestVersion}</strong> is available (current: <strong>v0.3.0</strong>).
               </div>
 
               <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 'bold' }}>Release Notes</div>
