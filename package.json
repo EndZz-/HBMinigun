@@ -1,7 +1,7 @@
 {
   "name": "hbminigun",
   "private": true,
-  "version": "0.2.5",
+  "version": "0.2.6",
   "main": "main.js",
   "scripts": {
     "dev": "node dev.js",
@@ -39,9 +39,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "EndZz-",
-        "repo": "HBMinigun",
-        "releaseType": "release"
+        "releaseType": "draft"
       }
     ],
     "nsis": {
