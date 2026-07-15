@@ -235,7 +235,7 @@ export default function App() {
         setUpdateModalOpen(true);
       } else {
         if (!silent) {
-          showToast('Latest Version', 'You are running the latest version of HB Minigun (v0.2.7).', 'success');
+          showToast('Latest Version', 'You are running the latest version of HB Minigun (v0.2.9).', 'success');
         }
       }
     } catch (err) {
@@ -1075,7 +1075,7 @@ export default function App() {
     // Base ratio model: h265 is more efficient
     const isH265 = codec === 'h265';
     const refRF = isH265 ? 24 : 22;
-    const baseRatio = isH265 ? 0.22 : 0.32;
+    const baseRatio = isH265 ? 0.30 : 0.43;
     
     // Logarithmic scaling based on RF (each change of 6 RF steps doubles/halves size)
     const rfDiff = refRF - rf;
@@ -1157,7 +1157,7 @@ export default function App() {
         <div className="logo-section">
           <FileVideo size={20} className="text-accent" style={{ color: 'var(--accent)' }} />
           <h1>HB Minigun</h1>
-          <span style={{ background: 'rgba(0, 132, 255, 0.15)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 'bold' }}>v0.2.7</span>
+          <span style={{ background: 'rgba(0, 132, 255, 0.15)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 'bold' }}>v0.2.9</span>
         </div>
         <div className="header-actions">
           {isScanning && (
@@ -2282,7 +2282,7 @@ export default function App() {
             </div>
             <div className="modal-body" style={{ maxHeight: 'none' }}>
               <div style={{ marginBottom: '16px' }}>
-                A newer version <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{updateInfo.latestVersion}</strong> is available (current: <strong>v0.2.7</strong>).
+                A newer version <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{updateInfo.latestVersion}</strong> is available (current: <strong>v0.2.9</strong>).
               </div>
 
               <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 'bold' }}>Release Notes</div>
