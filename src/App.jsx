@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Folder, 
-  Settings, 
+import {
+  Folder,
+  FolderOpen,
+  Settings,
   Play, 
   Square, 
   Trash2, 
@@ -264,7 +265,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    window.api.getAppVersion().then(v => setAppVersion(v));
+    window.api.getAppVersion().then(v => setAppVersion(v)).catch(() => {});
     const timer = setTimeout(() => {
       triggerUpdateCheck(true);
     }, 3000);
