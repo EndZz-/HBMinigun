@@ -125,13 +125,13 @@ body {
 }
 
 .panel-header {
-  padding: 16px 24px;
+  padding: 8px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   background: rgba(20, 23, 29, 0.3);
   border-bottom: 1px solid var(--border);
-  gap: 16px;
+  gap: 10px;
 }
 
 .panel-title-area {
@@ -177,12 +177,12 @@ body {
 
 .search-input {
   width: 100%;
-  padding: 8px 12px 8px 36px;
+  padding: 5px 10px 5px 30px;
   border-radius: 6px;
   background: var(--bg-darker);
   border: 1px solid var(--border);
   color: var(--text-main);
-  font-size: 13px;
+  font-size: 12px;
   outline: none;
   transition: all 0.2s ease;
 }
@@ -202,12 +202,12 @@ body {
 }
 
 .filter-select {
-  padding: 8px 12px;
+  padding: 5px 8px;
   border-radius: 6px;
   background: var(--bg-darker);
   border: 1px solid var(--border);
   color: var(--text-main);
-  font-size: 13px;
+  font-size: 12px;
   outline: none;
   cursor: pointer;
   min-width: 120px;
@@ -275,17 +275,26 @@ body {
 
 .files-table th {
   position: sticky;
-  top: 0;
   background: var(--bg-dark);
-  padding: 12px 16px;
+  padding: 7px 10px;
   font-weight: 600;
   color: var(--text-bright);
   border-bottom: 1px solid var(--border);
-  z-index: 1;
+  z-index: 2;
+}
+
+/* Category header row (first row) */
+.files-table thead tr:first-child th {
+  top: 0;
+}
+
+/* Column label row (second row) */
+.files-table thead tr:nth-child(2) th {
+  top: 32px; /* height of the category row */
 }
 
 .files-table td {
-  padding: 12px 16px;
+  padding: 7px 10px;
   border-bottom: 1px solid rgba(46, 53, 71, 0.5);
   vertical-align: middle;
 }
@@ -427,7 +436,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 24px;
+  padding: 12px;
 }
 
 .right-panel::-webkit-scrollbar {
@@ -435,21 +444,21 @@ body {
 }
 
 .section-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.75px;
   color: var(--text-bright);
-  margin-bottom: 16px;
+  margin-bottom: 10px;
   display: flex;
   align-items: center;
   gap: 8px;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 8px;
+  padding-bottom: 6px;
 }
 
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 
 .form-group label {
@@ -457,7 +466,7 @@ body {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 8px;
+  margin-bottom: 5px;
 }
 
 .input-with-button {

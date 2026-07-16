@@ -1371,14 +1371,14 @@ export default function App() {
               <table className="files-table">
                 <thead>
                   {/* Grouped Header Categories Row */}
-                  <tr style={{ background: 'var(--bg-darker)' }}>
-                    <th colSpan={4} className="col-divider" style={{ textAlign: 'center', padding: '10px 14px', fontSize: '11.5px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#00b4d8', textDecoration: 'underline', borderBottom: '2px solid var(--border)' }}>
+                  <tr style={{ background: 'var(--bg-dark)' }}>
+                    <th colSpan={4} className="col-divider" style={{ textAlign: 'center', padding: '7px 10px', fontSize: '11.5px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#00b4d8', textDecoration: 'underline', borderBottom: '2px solid var(--border)' }}>
                       Source Video Info
                     </th>
-                    <th colSpan={8} style={{ textAlign: 'center', padding: '10px 14px', fontSize: '11.5px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#ffb703', textDecoration: 'underline', borderBottom: '2px solid var(--accent)' }}>
+                    <th colSpan={8} style={{ textAlign: 'center', padding: '7px 10px', fontSize: '14px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#ffb703', textDecoration: 'underline', borderBottom: '2px solid var(--accent)' }}>
                       Transcode Options
                     </th>
-                    <th colSpan={2} style={{ textAlign: 'center', padding: '10px 14px', fontSize: '11.5px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#2ec4b6', textDecoration: 'underline', borderBottom: '2px solid var(--border)' }}>
+                    <th colSpan={2} style={{ textAlign: 'center', padding: '7px 10px', fontSize: '11.5px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#2ec4b6', textDecoration: 'underline', borderBottom: '2px solid var(--border)' }}>
                       Playback & Check
                     </th>
                   </tr>
