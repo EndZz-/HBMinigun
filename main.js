@@ -3,6 +3,14 @@ const path = require('path');
 const fs = require('fs');
 const { spawn, execFile, exec } = require('child_process');
 
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 let mainWindow;
 
 // Settings path
@@ -480,6 +488,29 @@ ipcMain.handle('confirm-app-close', (event, confirm) => {
     app.quit();
   }
   return { success: true };
+// Remove from queue
+ipcMain.handle('remove-from-queue', (event, filePath) => {
+  const proc = activeJobs.get(filePath);
+  if (proc) {
+    try {
+      spawn('taskkill', ['/F', '/T', '/PID', proc.pid]);
+      proc.kill();
+    } catch (e) {
+      console.error(`Failed to kill job ${filePath} during removal:`, e);
+    }
+    activeJobs.delete(filePath);
+    pausedJobs.delete(filePath);
+  }
+
+  transcodeQueue = transcodeQueue.filter(f => f.fullPath !== filePath);
+
+  if (proc && isTranscodingActive) {
+    const settings = loadSettings();
+    const tools = getToolPaths(settings);
+    processNextInQueue(tools.handbrake, settings);
+  }
+
+  return { success: true };
 });
 
 // Start Transcoding
@@ -532,275 +563,324 @@ async function processNextInQueue(hbPath, settings) {
     return;
   }
 
-  const file = transcodeQueue.shift();
-  const filePath = file.fullPath;
-  
-  // Create output path based on rules
-  let tempOutPath = '';
-  let finalOutPath = '';
+  let file;
+  try {
+    file = transcodeQueue.shift();
+    if (!file) return;
 
-  const ext = '.mkv'; // Default fallback output extension
-  // Use configured preset format if available, else default to .mkv
-  const outputExtension = (currentConfig.presetFile && currentConfig.presetFile.toLowerCase().endsWith('.mp4')) ? '.mp4' : '.mkv';
+    const filePath = file.fullPath;
+    
+    // Create output path based on rules
+    let tempOutPath = '';
+    let finalOutPath = '';
 
-  const baseNameWithoutExt = path.basename(filePath, path.extname(filePath));
-  const outputFileName = baseNameWithoutExt + outputExtension;
+    const ext = '.mkv'; // Default fallback output extension
+    // Use configured preset format if available, else default to .mkv
+    const outputExtension = (currentConfig.presetFile && currentConfig.presetFile.toLowerCase().endsWith('.mp4')) ? '.mp4' : '.mkv';
 
-  if (currentConfig.mode === 'replace') {
-    const tempDir = settings.tempDir || 'C:\\TempHBMG';
-    if (currentConfig.replaceAction === 'move') {
-      // Option #1 - Move: Transcode to TempDir\Filename.EXT (flat)
-      tempOutPath = path.join(tempDir, outputFileName);
-      finalOutPath = path.join(path.dirname(filePath), outputFileName);
+    const baseNameWithoutExt = path.basename(filePath, path.extname(filePath));
+    const outputFileName = baseNameWithoutExt + outputExtension;
+
+    if (currentConfig.mode === 'replace') {
+      const tempDir = settings.tempDir || 'C:\\TempHBMG';
+      if (currentConfig.replaceAction === 'move') {
+        // Option #1 - Move: Transcode to TempDir\Filename.EXT (flat)
+        tempOutPath = path.join(tempDir, outputFileName);
+        finalOutPath = path.join(path.dirname(filePath), outputFileName);
+      } else {
+        // Option #1 - Copy: Transcode to TempDir\Foldername\Filename.EXT
+        // Re-create folder structure inside Temp directory
+        // We will place it under TempDir\FolderName\Filename.EXT
+        const parentDirName = path.basename(path.dirname(filePath));
+        const targetTempDir = path.join(tempDir, parentDirName);
+        
+        try {
+          fs.mkdirSync(targetTempDir, { recursive: true });
+        } catch (err) {}
+        
+        tempOutPath = path.join(targetTempDir, outputFileName);
+        finalOutPath = path.join(path.dirname(filePath), outputFileName);
+      }
     } else {
-      // Option #1 - Copy: Transcode to TempDir\Foldername\Filename.EXT
-      // Re-create folder structure inside Temp directory
-      // We will place it under TempDir\FolderName\Filename.EXT
-      const parentDirName = path.basename(path.dirname(filePath));
-      const targetTempDir = path.join(tempDir, parentDirName);
+      // Option #2 - Transcode to Directory
+      // Re-create directory structure on destination folder
+      // Relative path from source root directory
+      const destDir = currentConfig.destinationDir;
+      const finalDir = path.join(destDir, path.dirname(file.relativePath));
       
       try {
-        fs.mkdirSync(targetTempDir, { recursive: true });
+        fs.mkdirSync(finalDir, { recursive: true });
       } catch (err) {}
-      
-      tempOutPath = path.join(targetTempDir, outputFileName);
-      finalOutPath = path.join(path.dirname(filePath), outputFileName);
+
+      tempOutPath = path.join(finalDir, outputFileName);
+      finalOutPath = tempOutPath; // No copy/move step needed, goes direct
     }
-  } else {
-    // Option #2 - Transcode to Directory
-    // Re-create directory structure on destination folder
-    // Relative path from source root directory
-    const destDir = currentConfig.destinationDir;
-    const finalDir = path.join(destDir, path.dirname(file.relativePath));
-    
-    try {
-      fs.mkdirSync(finalDir, { recursive: true });
-    } catch (err) {}
 
-    tempOutPath = path.join(finalDir, outputFileName);
-    finalOutPath = tempOutPath; // No copy/move step needed, goes direct
-  }
+    // Construct HandBrake Arguments
+    const args = ['-i', filePath, '-o', tempOutPath];
 
-  // Construct HandBrake Arguments
-  const args = ['-i', filePath, '-o', tempOutPath];
-
-  // Apply Presets or custom per-file transcode configs
-  if (currentConfig.presetFile && currentConfig.presetName) {
-    args.push('--preset-import-file', currentConfig.presetFile);
-    args.push('-Z', currentConfig.presetName);
-  } else {
-    // Get file specific config or default fallback
-    const fileConfig = (currentConfig.fileConfigs && currentConfig.fileConfigs[filePath]) || {
-      videoCodec: 'h264',
-      quality: 20,
-      framerate: 'constant',
-      audioCodec: 'AAC',
-      audioSource1: file.audioStreams && file.audioStreams.length > 0 ? '1' : 'none',
-      audioSource2: 'none',
-      subtitleSource1: 'none',
-      subtitleSource2: 'none'
-    };
-
-    // Container format
-    args.push('-f', 'av_mkv');
-
-    // Video options
-    const encoder = fileConfig.videoCodec === 'h265' ? 'x265' : 'x264';
-    args.push('-e', encoder);
-    args.push('-q', fileConfig.quality.toString());
-
-    if (fileConfig.framerate === 'constant') {
-      args.push('--cfr');
+    // Apply Presets or custom per-file transcode configs
+    if (currentConfig.presetFile && currentConfig.presetName) {
+      args.push('--preset-import-file', currentConfig.presetFile);
+      args.push('-Z', currentConfig.presetName);
     } else {
-      args.push('--vfr');
-    }
+      // Get file specific config or default fallback
+      const fileConfig = (currentConfig.fileConfigs && currentConfig.fileConfigs[filePath]) || {
+        videoCodec: 'h264',
+        quality: 20,
+        framerate: 'constant',
+        audioCodec: 'AAC',
+        audioSource1: file.audioStreams && file.audioStreams.length > 0 ? '1' : 'none',
+        audioSource2: 'none',
+        subtitleSource1: 'none',
+        subtitleSource2: 'none'
+      };
 
-    // Audio options
-    const selectedAudioTracks = [];
-    const audioEncoders = [];
-    const encMap = { 'AAC': 'av_aac', 'AC3': 'ac3', 'EAC3': 'eac3', 'MP3': 'mp3', 'Copy': 'copy' };
-    const encoderName = encMap[fileConfig.audioCodec] || 'av_aac';
+      // Container format
+      args.push('-f', 'av_mkv');
 
-    if (fileConfig.audioSource1 !== 'none') {
-      selectedAudioTracks.push(fileConfig.audioSource1);
-      audioEncoders.push(encoderName);
-    }
-    if (fileConfig.audioSource2 !== 'none') {
-      selectedAudioTracks.push(fileConfig.audioSource2);
-      audioEncoders.push(encoderName);
-    }
+      // Video options
+      const encoder = fileConfig.videoCodec === 'h265' ? 'x265' : 'x264';
+      args.push('-e', encoder);
+      args.push('-q', fileConfig.quality.toString());
 
-    if (selectedAudioTracks.length > 0) {
-      args.push('-a', selectedAudioTracks.join(','));
-      args.push('-E', audioEncoders.join(','));
-    } else {
-      args.push('-a', 'none');
-    }
+      if (fileConfig.framerate === 'constant') {
+        args.push('--cfr');
+      } else {
+        args.push('--vfr');
+      }
 
-    // Subtitle options
-    const selectedSubTracks = [];
-    if (fileConfig.subtitleSource1 !== 'none') {
-      selectedSubTracks.push(fileConfig.subtitleSource1);
-    }
-    if (fileConfig.subtitleSource2 !== 'none') {
-      selectedSubTracks.push(fileConfig.subtitleSource2);
-    }
+      // Audio options
+      const selectedAudioTracks = [];
+      const audioEncoders = [];
+      const encMap = { 'AAC': 'av_aac', 'AC3': 'ac3', 'EAC3': 'eac3', 'MP3': 'mp3', 'Copy': 'copy' };
+      const encoderName = encMap[fileConfig.audioCodec] || 'av_aac';
 
-    if (selectedSubTracks.length > 0) {
-      args.push('-s', selectedSubTracks.join(','));
-    } else {
-      args.push('-s', 'none');
-    }
-  }
+      if (fileConfig.audioSource1 !== 'none') {
+        selectedAudioTracks.push(fileConfig.audioSource1);
+        audioEncoders.push(encoderName);
+      }
+      if (fileConfig.audioSource2 !== 'none') {
+        selectedAudioTracks.push(fileConfig.audioSource2);
+        audioEncoders.push(encoderName);
+      }
 
-  mainWindow.webContents.send('transcode-log', {
-    filePath: filePath,
-    text: `Starting encode for: ${file.name}\nCommand: HandBrakeCLI ${args.join(' ')}\n`
-  });
+      if (selectedAudioTracks.length > 0) {
+        args.push('-a', selectedAudioTracks.join(','));
+        args.push('-E', audioEncoders.join(','));
+      } else {
+        args.push('-a', 'none');
+      }
 
-  const hbProc = spawn(hbPath, args);
-  activeJobs.set(filePath, hbProc);
+      // Subtitle options
+      const selectedSubTracks = [];
+      if (fileConfig.subtitleSource1 !== 'none') {
+        selectedSubTracks.push(fileConfig.subtitleSource1);
+      }
+      if (fileConfig.subtitleSource2 !== 'none') {
+        selectedSubTracks.push(fileConfig.subtitleSource2);
+      }
 
-  // Send initial progress update
-  mainWindow.webContents.send('transcode-progress', {
-    filePath: filePath,
-    percent: 0,
-    fps: 0,
-    avgFps: 0,
-    eta: 'Calculating...'
-  });
-
-  // Parse stdout chunk by chunk
-  let buffer = '';
-  hbProc.stdout.on('data', (data) => {
-    buffer += data.toString();
-    // Split by \r or \n since HandBrake uses \r to overwrite progress
-    const lines = buffer.split(/[\r\n]+/);
-    // Keep the last incomplete part in buffer
-    buffer = lines.pop();
-
-    for (const line of lines) {
-      if (line.trim()) {
-        mainWindow.webContents.send('transcode-log', { filePath: filePath, text: line });
-        
-        // Parse progress line:
-        // Encoding: task 1 of 1, 12.34 % (15.54 fps, avg 15.22 fps, ETA 00h02m10s)
-        const percentMatch = line.match(/Encoding: task \d+ of \d+,\s*([\d\.]+)\s*%/);
-        if (percentMatch) {
-          const percent = parseFloat(percentMatch[1]);
-          let fps = 0;
-          let avgFps = 0;
-          let eta = 'Calculating...';
-
-          const fpsMatch = line.match(/\(\s*([\d\.]+)\s*fps/);
-          if (fpsMatch) fps = parseFloat(fpsMatch[1]);
-
-          const avgFpsMatch = line.match(/avg\s*([\d\.]+)\s*fps/);
-          if (avgFpsMatch) avgFps = parseFloat(avgFpsMatch[1]);
-
-          const etaMatch = line.match(/ETA\s*([^\)]+)/);
-          if (etaMatch) eta = etaMatch[1].trim();
-
-          mainWindow.webContents.send('transcode-progress', {
-            filePath: filePath,
-            percent: percent,
-            fps: fps,
-            avgFps: avgFps,
-            eta: eta
-          });
-        }
+      if (selectedSubTracks.length > 0) {
+        args.push('-s', selectedSubTracks.join(','));
+      } else {
+        args.push('-s', 'none');
       }
     }
-  });
 
-  hbProc.stderr.on('data', (data) => {
     mainWindow.webContents.send('transcode-log', {
       filePath: filePath,
-      text: `[Error] ${data.toString()}`
+      text: `Starting encode for: ${file.name}\nCommand: HandBrakeCLI ${args.join(' ')}\n`
     });
-  });
 
-  hbProc.on('close', async (code) => {
-    activeJobs.delete(filePath);
-    
-    if (code === 0) {
-      mainWindow.webContents.send('transcode-log', {
-        filePath: filePath,
-        text: `Encoding completed successfully (Code: ${code}).\n`
-      });
+    const hbProc = spawn(hbPath, args);
+    activeJobs.set(filePath, hbProc);
 
-      // Execute file management steps (Move / Copy for Option #1)
-      let fileOpSuccess = true;
-      try {
-        if (currentConfig.mode === 'replace') {
-          if (currentConfig.replaceAction === 'move') {
-            // Delete original file
-            if (fs.existsSync(filePath)) {
-              mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Deleting original file: ${filePath}\n` });
-              fs.unlinkSync(filePath);
-            }
-            // Move transcoded file
-            mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Moving transcoded file to original path: ${finalOutPath}\n` });
-            fs.renameSync(tempOutPath, finalOutPath);
-          } else {
-            // Copy transcoded file (Option #2 Copy replaces original, but retains the file in TempHBMG\FolderName\Filename.EXT)
-            mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Replacing original file via Copy: ${finalOutPath}\n` });
-            fs.copyFileSync(tempOutPath, finalOutPath);
-          }
-        } else {
-          // Option #1 (Transcode to custom directory) automatic post-transcode action
-          if (currentConfig.postAction === 'move') {
-            const originalReplacePath = path.join(path.dirname(filePath), outputFileName);
-            if (fs.existsSync(filePath)) {
-              mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `[Post-Action] Deleting original file: ${filePath}\n` });
-              fs.unlinkSync(filePath);
-            }
-            mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `[Post-Action] Moving transcoded file: ${tempOutPath} -> ${originalReplacePath}\n` });
-            fs.renameSync(tempOutPath, originalReplacePath);
-            finalOutPath = originalReplacePath;
-          } else if (currentConfig.postAction === 'copy') {
-            const originalReplacePath = path.join(path.dirname(filePath), outputFileName);
-            mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `[Post-Action] Replacing original file via Copy: ${originalReplacePath}\n` });
-            fs.copyFileSync(tempOutPath, originalReplacePath);
-            finalOutPath = originalReplacePath;
+    // Send initial progress update
+    mainWindow.webContents.send('transcode-progress', {
+      filePath: filePath,
+      percent: 0,
+      fps: 0,
+      avgFps: 0,
+      eta: 'Calculating...'
+    });
+
+    // Parse stdout chunk by chunk
+    let buffer = '';
+    hbProc.stdout.on('data', (data) => {
+      buffer += data.toString();
+      // Split by \r or \n since HandBrake uses \r to overwrite progress
+      const lines = buffer.split(/[\r\n]+/);
+      // Keep the last incomplete part in buffer
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (line.trim()) {
+          mainWindow.webContents.send('transcode-log', { filePath: filePath, text: line });
+          
+          // Parse progress line:
+          // Encoding: task 1 of 1, 12.34 % (15.54 fps, avg 15.22 fps, ETA 00h02m10s)
+          const percentMatch = line.match(/Encoding: task \d+ of \d+,\s*([\d\.]+)\s*%/);
+          if (percentMatch) {
+            const percent = parseFloat(percentMatch[1]);
+            let fps = 0;
+            let avgFps = 0;
+            let eta = 'Calculating...';
+
+            const fpsMatch = line.match(/\(\s*([\d\.]+)\s*fps/);
+            if (fpsMatch) fps = parseFloat(fpsMatch[1]);
+
+            const avgFpsMatch = line.match(/avg\s*([\d\.]+)\s*fps/);
+            if (avgFpsMatch) avgFps = parseFloat(avgFpsMatch[1]);
+
+            const etaMatch = line.match(/ETA\s*([^\)]+)/);
+            if (etaMatch) eta = etaMatch[1].trim();
+
+            mainWindow.webContents.send('transcode-progress', {
+              filePath: filePath,
+              percent: percent,
+              fps: fps,
+              avgFps: avgFps,
+              eta: eta
+            });
           }
         }
-      } catch (err) {
-        fileOpSuccess = false;
+      }
+    });
+
+    hbProc.stderr.on('data', (data) => {
+      mainWindow.webContents.send('transcode-log', {
+        filePath: filePath,
+        text: `[Error] ${data.toString()}`
+      });
+    });
+
+    hbProc.on('error', (err) => {
+      console.error(`HandBrake process error for ${filePath}:`, err);
+      mainWindow.webContents.send('transcode-log', {
+        filePath: filePath,
+        text: `[Process Error] Failed to execute HandBrake: ${err.message}\n`
+      });
+      
+      if (activeJobs.has(filePath)) {
+        activeJobs.delete(filePath);
+        mainWindow.webContents.send('transcode-file-complete', {
+          filePath: filePath,
+          success: false,
+          error: err.message
+        });
+        
+        // Cleanup failed partial output
+        try {
+          if (fs.existsSync(tempOutPath)) {
+            fs.unlinkSync(tempOutPath);
+          }
+        } catch(e) {}
+        
+        processNextInQueue(hbPath, settings);
+      }
+    });
+
+    hbProc.on('close', async (code) => {
+      activeJobs.delete(filePath);
+      
+      if (code === 0) {
         mainWindow.webContents.send('transcode-log', {
           filePath: filePath,
-          text: `[File Operation Failed] ${err.message}\n`
+          text: `Encoding completed successfully (Code: ${code}).\n`
         });
+
+        // Execute file management steps (Move / Copy for Option #1)
+        let fileOpSuccess = true;
+        try {
+          if (currentConfig.mode === 'replace') {
+            if (currentConfig.replaceAction === 'move') {
+              // Delete original file
+              if (fs.existsSync(filePath)) {
+                mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Deleting original file: ${filePath}\n` });
+                fs.unlinkSync(filePath);
+              }
+              // Move transcoded file
+              mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Moving transcoded file to original path: ${finalOutPath}\n` });
+              fs.renameSync(tempOutPath, finalOutPath);
+            } else {
+              // Copy transcoded file (Option #2 Copy replaces original, but retains the file in TempHBMG\FolderName\Filename.EXT)
+              mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Replacing original file via Copy: ${finalOutPath}\n` });
+              fs.copyFileSync(tempOutPath, finalOutPath);
+            }
+          } else {
+            // Option #1 (Transcode to custom directory) automatic post-transcode action
+            if (currentConfig.postAction === 'move') {
+              const originalReplacePath = path.join(path.dirname(filePath), outputFileName);
+              if (fs.existsSync(filePath)) {
+                mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `[Post-Action] Deleting original file: ${filePath}\n` });
+                fs.unlinkSync(filePath);
+              }
+              mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `[Post-Action] Moving transcoded file: ${tempOutPath} -> ${originalReplacePath}\n` });
+              fs.renameSync(tempOutPath, originalReplacePath);
+              finalOutPath = originalReplacePath;
+            } else if (currentConfig.postAction === 'copy') {
+              const originalReplacePath = path.join(path.dirname(filePath), outputFileName);
+              mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `[Post-Action] Replacing original file via Copy: ${originalReplacePath}\n` });
+              fs.copyFileSync(tempOutPath, originalReplacePath);
+              finalOutPath = originalReplacePath;
+            }
+          }
+        } catch (err) {
+          fileOpSuccess = false;
+          mainWindow.webContents.send('transcode-log', {
+            filePath: filePath,
+            text: `[File Operation Failed] ${err.message}\n`
+          });
+        }
+
+        mainWindow.webContents.send('transcode-file-complete', {
+          filePath: filePath,
+          success: fileOpSuccess,
+          finalPath: finalOutPath
+        });
+      } else {
+        mainWindow.webContents.send('transcode-log', {
+          filePath: filePath,
+          text: `Encoding failed with exit code: ${code}\n`
+        });
+
+        mainWindow.webContents.send('transcode-file-complete', {
+          filePath: filePath,
+          success: false,
+          error: `Exit code ${code}`
+        });
+
+        // Cleanup failed partial output
+        try {
+          if (fs.existsSync(tempOutPath)) {
+            fs.unlinkSync(tempOutPath);
+          }
+        } catch(e) {}
       }
 
-      mainWindow.webContents.send('transcode-file-complete', {
-        filePath: filePath,
-        success: fileOpSuccess,
-        finalPath: finalOutPath
-      });
-    } else {
+      // Process next item
+      processNextInQueue(hbPath, settings);
+    });
+
+  } catch (err) {
+    console.error('Error starting next job in queue:', err);
+    if (file) {
       mainWindow.webContents.send('transcode-log', {
-        filePath: filePath,
-        text: `Encoding failed with exit code: ${code}\n`
+        filePath: file.fullPath,
+        text: `[Internal Error] Failed to start transcode: ${err.message}\n`
       });
-
       mainWindow.webContents.send('transcode-file-complete', {
-        filePath: filePath,
+        filePath: file.fullPath,
         success: false,
-        error: `Exit code ${code}`
+        error: err.message
       });
-
-      // Cleanup failed partial output
-      try {
-        if (fs.existsSync(tempOutPath)) {
-          fs.unlinkSync(tempOutPath);
-        }
-      } catch(e) {}
     }
-
-    // Process next item
-    processNextInQueue(hbPath, settings);
-  });
+    // Continue with the next file
+    setTimeout(() => {
+      processNextInQueue(hbPath, settings);
+    }, 100);
+  }
 }
 
 // Split command line arguments respecting quotes

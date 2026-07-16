@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
   confirmAppClose: (confirm) => ipcRenderer.invoke('confirm-app-close', confirm),
   generateSamples: (args) => ipcRenderer.invoke('generate-samples', args),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  removeFromQueue: (filePath) => ipcRenderer.invoke('remove-from-queue', filePath),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   downloadAndInstallUpdate: (downloadUrl) => ipcRenderer.invoke('download-and-install-update', downloadUrl),
   

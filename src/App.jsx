@@ -1023,6 +1023,18 @@ export default function App() {
     }
   };
 
+  const handleRemoveFromQueue = async (filePath) => {
+    try {
+      const res = await window.api.removeFromQueue(filePath);
+      if (res.success) {
+        setQueue(prev => prev.filter(item => item.file.fullPath !== filePath));
+        showToast('Queue Update', 'File removed from queue.', 'success');
+      }
+    } catch (err) {
+      showToast('Error', err.message);
+    }
+  };
+
   const handlePauseAll = async () => {
     try {
       const res = await window.api.pauseAll();
@@ -2239,6 +2251,17 @@ export default function App() {
                               Stop
                             </button>
                           )}
+                          <button 
+                            className="btn btn-xs" 
+                            style={{ padding: '2px 6px', fontSize: '10px', height: '20px', background: 'rgba(150, 150, 150, 0.1)', border: '1px solid rgba(150, 150, 150, 0.2)', color: 'var(--text-muted)', cursor: 'pointer' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveFromQueue(item.file.fullPath);
+                            }}
+                            title="Remove from queue"
+                          >
+                            Remove
+                          </button>
                         </div>
                       </div>
                     </div>
