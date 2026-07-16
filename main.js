@@ -488,6 +488,8 @@ ipcMain.handle('confirm-app-close', (event, confirm) => {
     app.quit();
   }
   return { success: true };
+});
+
 // Remove from queue
 ipcMain.handle('remove-from-queue', (event, filePath) => {
   const proc = activeJobs.get(filePath);
