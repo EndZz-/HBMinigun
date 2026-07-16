@@ -1112,15 +1112,15 @@ input:checked + .toggle-slider:before {
 
 /* Compact Table Dropdown Inputs */
 .table-select {
-  padding: 4px 6px;
-  font-size: 11px;
+  padding: 6px 10px;
+  font-size: 13px;
   border-radius: 4px;
   background: var(--bg-darker);
   border: 1px solid var(--border);
   color: var(--text-main);
   outline: none;
   cursor: pointer;
-  max-width: 105px;
+  max-width: 130px;
   transition: border-color 0.15s ease;
 }
 .table-select:focus {

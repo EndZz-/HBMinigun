@@ -1498,7 +1498,7 @@ export default function App() {
                             value={config.quality}
                             onChange={(e) => handleUpdateConfig(file.fullPath, 'quality', parseInt(e.target.value))}
                             disabled={isTranscoding}
-                            style={{ minWidth: '60px' }}
+                            style={{ minWidth: '70px' }}
                           >
                             {Array.from({ length: 21 }, (_, i) => 30 - i).map(q => (
                               <option key={q} value={q}>{q}</option>
