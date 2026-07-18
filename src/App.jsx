@@ -1281,7 +1281,7 @@ export default function App() {
       {/* Header */}
       <header className="app-header">
         <div className="logo-section">
-          <FileVideo size={20} className="text-accent" style={{ color: 'var(--accent)' }} />
+          <img src="/logo.png" alt="HBMiniGun" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
           <h1>HB Minigun</h1>
           <span style={{ background: 'rgba(0, 132, 255, 0.15)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 'bold' }}>v{appVersion}</span>
         </div>

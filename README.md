@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/icons.svg" alt="HBMiniGun Logo" width="120" />
+  <img src="public/logo.png" alt="HBMiniGun Logo" width="200" />
   <h1>HBMiniGun</h1>
   <p><strong>A fast, modern, and intelligent batch transcoder built on HandBrake.</strong></p>
 

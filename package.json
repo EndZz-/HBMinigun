@@ -1,7 +1,7 @@
 {
   "name": "hbminigun",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "main": "main.js",
   "scripts": {
     "dev": "node dev.js",
@@ -34,8 +34,10 @@
     },
     "win": {
       "target": "nsis",
-      "artifactName": "HBMiniGun_v${version}.${ext}"
+      "artifactName": "HBMiniGun_v${version}.${ext}",
+      "icon": "build/icon.ico"
     },
+    "icon": "build/icon.png",
     "publish": [
       {
         "provider": "github",
