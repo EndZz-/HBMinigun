@@ -468,53 +468,55 @@ function localTranscodePath(filePath, settings, outputExtension) {
   return path.join(transcodeDir, baseName + outputExtension);
 }
 
-// Kick off prefetch loop: copies files from networkQueue into local source\
-// one at a time while staged count < maxEngines.
+// Stage exactly ONE file from networkQueue into local source\.
+// Synchronously claims the slot (sets prefetchInProgress) before any async work,
+// so concurrent callers cannot double-stage.
 function triggerPrefetch(hbPath, settings) {
-  if (prefetchInProgress) return;
+  if (!isTranscodingActive) return;
+  if (networkQueue.length === 0) return;
+  if (prefetchInProgress) return;          // already staging one — caller will be notified when done
+
+  // How many files are already in-flight (staged-but-not-started + actively transcoding)?
+  const inFlight = stagedFiles.size + activeJobs.size;
+  if (inFlight >= maxEngines) return;      // all engine slots occupied — wait for a close event
+
+  // Claim the slot synchronously BEFORE the first await
   prefetchInProgress = true;
-  _prefetchNext(hbPath, settings);
-}
+  const file = networkQueue.shift();       // also synchronous — no race
+  const srcPath = localSourcePath(file.fullPath, settings);
 
-async function _prefetchNext(hbPath, settings) {
-  // Stop if nothing left to prefetch or staged depth already at cap
-  if (!isTranscodingActive || networkQueue.length === 0 || stagedFiles.size >= maxEngines) {
-    prefetchInProgress = false;
-    return;
-  }
-
-  const file = networkQueue.shift();
-  const srcPath  = localSourcePath(file.fullPath, settings);
-
+  mainWindow.webContents.send('transcode-progress', {
+    filePath: file.fullPath, percent: 0, fps: 0, avgFps: 0, eta: 'Staging...'
+  });
   mainWindow.webContents.send('transcode-log', {
     filePath: file.fullPath,
     text: `[Network] Copying to local staging: ${file.name}\n`
   });
-  mainWindow.webContents.send('transcode-progress', {
-    filePath: file.fullPath, percent: 0, fps: 0, avgFps: 0, eta: 'Staging...'
-  });
 
-  try {
-    await withNetworkLock(() => copyFileAsync(file.fullPath, srcPath));
-    stagedFiles.set(file.fullPath, srcPath);
-    mainWindow.webContents.send('transcode-log', {
-      filePath: file.fullPath,
-      text: `[Network] Staging complete: ${file.name}\n`
+  // Run the actual copy asynchronously — the guard is already set
+  withNetworkLock(() => copyFileAsync(file.fullPath, srcPath))
+    .then(() => {
+      stagedFiles.set(file.fullPath, srcPath);
+      mainWindow.webContents.send('transcode-log', {
+        filePath: file.fullPath,
+        text: `[Network] Staging complete: ${file.name}\n`
+      });
+      prefetchInProgress = false;
+      // Start the transcode for this file right away
+      processNextInQueue(hbPath, settings);
+    })
+    .catch((err) => {
+      prefetchInProgress = false;
+      mainWindow.webContents.send('transcode-log', {
+        filePath: file.fullPath,
+        text: `[Network Error] Failed to stage ${file.name}: ${err.message}\n`
+      });
+      mainWindow.webContents.send('transcode-file-complete', {
+        filePath: file.fullPath, success: false, error: `Stage failed: ${err.message}`
+      });
+      // Try the next queued file
+      triggerPrefetch(hbPath, settings);
     });
-    // Start the transcode immediately for this staged file
-    processNextInQueue(hbPath, settings);
-  } catch (err) {
-    mainWindow.webContents.send('transcode-log', {
-      filePath: file.fullPath,
-      text: `[Network Error] Failed to stage ${file.name}: ${err.message}\n`
-    });
-    mainWindow.webContents.send('transcode-file-complete', {
-      filePath: file.fullPath, success: false, error: `Stage failed: ${err.message}`
-    });
-  }
-
-  // Continue prefetching next file
-  _prefetchNext(hbPath, settings);
 }
 
 // Suspend process helper
@@ -791,12 +793,17 @@ async function processNextInQueue(hbPath, settings) {
     const candidate = transcodeQueue[0];
     const isNet = await isNetworkPath(candidate.fullPath);
     if (isNet) {
-      // Route into the network prefetch pipeline instead of starting directly.
-      // Move ALL queued files (including candidate) to networkQueue if not already there.
+      // Move ALL remaining queued UNC files into networkQueue (if not already there),
+      // then trigger ONE staging operation.
       const networkPaths = new Set(networkQueue.map(f => f.fullPath));
-      const toStage = transcodeQueue.filter(f => !networkPaths.has(f.fullPath) && !stagedFiles.has(f.fullPath) && !activeJobs.has(f.fullPath));
+      const toStage = transcodeQueue.filter(
+        f => !networkPaths.has(f.fullPath) && !stagedFiles.has(f.fullPath) && !activeJobs.has(f.fullPath)
+      );
       networkQueue.push(...toStage);
-      transcodeQueue = transcodeQueue.filter(f => !toStage.find(t => t.fullPath === f.fullPath));
+      transcodeQueue = transcodeQueue.filter(
+        f => !toStage.find(t => t.fullPath === f.fullPath)
+      );
+      // Stage one file (respects maxEngines cap internally)
       triggerPrefetch(hbPath, settings);
       return;
     }
@@ -935,6 +942,9 @@ async function processNextInQueue(hbPath, settings) {
 
     const hbProc = spawn(hbPath, args);
     activeJobs.set(filePath, hbProc);
+
+    // If this was a UNC file, immediately try to stage the next one while this transcodes
+    if (isUncFile) triggerPrefetch(hbPath, settings);
 
     // Send initial progress update
     mainWindow.webContents.send('transcode-progress', {
