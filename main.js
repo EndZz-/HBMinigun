@@ -835,29 +835,22 @@ async function processNextInQueue(hbPath, settings) {
     let finalOutPath = '';
 
     if (currentConfig.mode === 'replace') {
-      // For UNC sources: always write transcode output to local transcodes\
-      // For local sources: write to TempHBMG as before
+      // Option 1: Replace source file.
+      // Transcode output always goes to local TempHBMG\transcodes\ (safe intermediate).
+      // After transcode, move or copy to the original file's directory — exactly the same
+      // behaviour whether the source is local or UNC. UNC staging only affects the INPUT.
       tempOutPath = localTranscodePath(filePath, settings, outputExtension);
       try { fs.mkdirSync(path.dirname(tempOutPath), { recursive: true }); } catch(e) {}
       finalOutPath = path.join(path.dirname(filePath), outputFileName);
     } else {
-      // Option #2 - Transcode to Destination Directory
-      if (fileIsUncSource) {
-        // Local intermediate then move-back to destination
-        tempOutPath = localTranscodePath(filePath, settings, outputExtension);
-        try { fs.mkdirSync(path.dirname(tempOutPath), { recursive: true }); } catch(e) {}
-        const destDir = currentConfig.destinationDir;
-        const finalDir = path.join(destDir, path.dirname(fffile.relativePath));
-        try { fs.mkdirSync(finalDir, { recursive: true }); } catch(e) {}
-        finalOutPath = path.join(finalDir, outputFileName);
-      } else {
-        // Local source: write straight to destination
-        const destDir = currentConfig.destinationDir;
-        const finalDir = path.join(destDir, path.dirname(fffile.relativePath));
-        try { fs.mkdirSync(finalDir, { recursive: true }); } catch(e) {}
-        tempOutPath = path.join(finalDir, outputFileName);
-        finalOutPath = tempOutPath;
-      }
+      // Option 2: Transcode to Destination Directory.
+      // HandBrake writes directly to the configured destination — no local intermediate.
+      // UNC staging only affects the INPUT path (hbInputPath), not the output.
+      const destDir = currentConfig.destinationDir;
+      const finalDir = path.join(destDir, path.dirname(fffile.relativePath));
+      try { fs.mkdirSync(finalDir, { recursive: true }); } catch(e) {}
+      tempOutPath = path.join(finalDir, outputFileName);
+      finalOutPath = tempOutPath;
     }
 
     // HandBrake reads from local staged copy (UNC) or directly (local)
@@ -1020,63 +1013,45 @@ async function processNextInQueue(hbPath, settings) {
 
         let fileOpSuccess = true;
         try {
-          // For UNC destinations, copy-back via network lock.
-          // For local destinations, rename/copy directly (fast, no network needed).
-          const destIsNetwork = finalOutPath !== tempOutPath && await isNetworkPath(finalOutPath).catch(() => false);
-
-          const doFileOps = async () => {
-            if (currentConfig.mode === 'replace') {
-              if (currentConfig.replaceAction === 'move') {
-                // Delete original, move transcoded to its place
-                if (fs.existsSync(filePath)) {
-                  mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Deleting original: ${filePath}\n` });
-                  fs.unlinkSync(filePath);
-                }
-                mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Moving to: ${finalOutPath}\n` });
-                try { fs.mkdirSync(path.dirname(finalOutPath), { recursive: true }); } catch(e) {}
-                fs.renameSync(tempOutPath, finalOutPath);
-              } else {
-                // Copy transcoded to original location (keep both)
-                mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Copying to: ${finalOutPath}\n` });
-                try { fs.mkdirSync(path.dirname(finalOutPath), { recursive: true }); } catch(e) {}
-                fs.copyFileSync(tempOutPath, finalOutPath);
+          if (currentConfig.mode === 'replace') {
+            // Option 1: move or copy the local transcode to the original file's location.
+            // This is always local-to-local (or local-to-UNC for the final write).
+            // Behaviour is identical whether the source was local or UNC.
+            if (currentConfig.replaceAction === 'move') {
+              if (fs.existsSync(filePath)) {
+                mainWindow.webContents.send('transcode-log', { filePath, text: `Deleting original: ${filePath}\n` });
+                fs.unlinkSync(filePath);
               }
+              mainWindow.webContents.send('transcode-log', { filePath, text: `Moving to: ${finalOutPath}\n` });
+              try { fs.mkdirSync(path.dirname(finalOutPath), { recursive: true }); } catch(e) {}
+              fs.renameSync(tempOutPath, finalOutPath);
             } else {
-              // Option #2: Transcode to Destination Directory
-              if (fileIsUncSource || destIsNetwork) {
-                // temp → destination (network write)
-                mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Copying to destination: ${finalOutPath}\n` });
-                await copyFileAsync(tempOutPath, finalOutPath);
-                // Clean up local transcode temp
-                try { fs.unlinkSync(tempOutPath); } catch(e) {}
-              }
-              // Post-action for Option #2 (local destination handled already by direct write)
-              if (!fileIsUncSource && !destIsNetwork) {
-                if (currentConfig.postAction === 'move') {
-                  const origReplace = path.join(path.dirname(filePath), outputFileName);
-                  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-                  fs.renameSync(tempOutPath, origReplace);
-                  finalOutPath = origReplace;
-                } else if (currentConfig.postAction === 'copy') {
-                  const origReplace = path.join(path.dirname(filePath), outputFileName);
-                  fs.copyFileSync(tempOutPath, origReplace);
-                  finalOutPath = origReplace;
-                }
-              }
+              mainWindow.webContents.send('transcode-log', { filePath, text: `Copying to: ${finalOutPath}\n` });
+              try { fs.mkdirSync(path.dirname(finalOutPath), { recursive: true }); } catch(e) {}
+              fs.copyFileSync(tempOutPath, finalOutPath);
             }
-          };
-
-          // Use network lock only when we need to write to a network destination
-          if (destIsNetwork || (isUncFile && currentConfig.mode !== 'transcodeDir')) {
-            await withNetworkLock(doFileOps);
           } else {
-            await doFileOps();
+            // Option 2: output was already written directly to the destination by HandBrake.
+            // Apply post-action if configured.
+            if (currentConfig.postAction === 'move') {
+              const origReplace = path.join(path.dirname(filePath), outputFileName);
+              mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Deleting original: ${filePath}\n` });
+              if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+              mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Moving: ${tempOutPath} -> ${origReplace}\n` });
+              fs.renameSync(tempOutPath, origReplace);
+              finalOutPath = origReplace;
+            } else if (currentConfig.postAction === 'copy') {
+              const origReplace = path.join(path.dirname(filePath), outputFileName);
+              mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Copying to: ${origReplace}\n` });
+              fs.copyFileSync(tempOutPath, origReplace);
+              finalOutPath = origReplace;
+            }
+            // No post-action: file is already at finalOutPath, nothing to do.
           }
-
         } catch (err) {
           fileOpSuccess = false;
           mainWindow.webContents.send('transcode-log', {
-            filePath: filePath, text: `[File Operation Failed] ${err.message}\n`
+            filePath, text: `[File Operation Failed] ${err.message}\n`
           });
         }
 
