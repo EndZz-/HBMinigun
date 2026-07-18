@@ -375,6 +375,148 @@ let isTranscodingActive = false;
 let currentConfig = null;
 let forceClose = false;
 
+// ─── UNC / Network-path pipeline state ───────────────────────────────────────
+let networkLock = false;          // true while a copy-in or move-back is running
+let stagedFiles = new Map();      // key: original fullPath → localSourcePath (staged in TempHBMG\source\)
+let networkQueue = [];            // files waiting to be copy-in'd (original file objects)
+let prefetchInProgress = false;   // guard so only one prefetch loop runs at a time
+const driveTypeCache = new Map(); // drive letter → true (network) | false (local)
+
+// Detect whether a path is on a network location (UNC or mapped network drive).
+// Returns a Promise<boolean>.
+async function isNetworkPath(filePath) {
+  // Raw UNC: starts with \\
+  if (filePath.startsWith('\\\\') || filePath.startsWith('//')) return true;
+
+  // Extract drive letter (e.g. "Z" from "Z:\...")
+  const driveMatch = filePath.match(/^([A-Za-z]):/);
+  if (!driveMatch) return false;
+  const letter = driveMatch[1].toUpperCase();
+
+  if (driveTypeCache.has(letter)) return driveTypeCache.get(letter);
+
+  return new Promise((resolve) => {
+    // DriveType 4 = Network in Win32_LogicalDisk
+    const ps = `(Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='${letter}:'").DriveType`;
+    const proc = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps]);
+    let out = '';
+    proc.stdout.on('data', d => { out += d.toString(); });
+    proc.on('close', () => {
+      const isNet = out.trim() === '4';
+      driveTypeCache.set(letter, isNet);
+      resolve(isNet);
+    });
+    proc.on('error', () => {
+      driveTypeCache.set(letter, false);
+      resolve(false);
+    });
+  });
+}
+
+// Copy a file from src to dest, overwriting dest if it exists.
+// Returns a Promise that resolves when done or rejects on error.
+function copyFileAsync(src, dest) {
+  return new Promise((resolve, reject) => {
+    try {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+    } catch (e) {}
+    const rd = fs.createReadStream(src);
+    const wr = fs.createWriteStream(dest);
+    rd.on('error', reject);
+    wr.on('error', reject);
+    wr.on('finish', resolve);
+    rd.pipe(wr);
+  });
+}
+
+// Acquire the single global network lock, run fn(), then release.
+// Calls are serialized — the second caller waits until the first finishes.
+const networkLockQueue = [];
+let networkLockHeld = false;
+function withNetworkLock(fn) {
+  return new Promise((resolve, reject) => {
+    networkLockQueue.push({ fn, resolve, reject });
+    drainNetworkLock();
+  });
+}
+function drainNetworkLock() {
+  if (networkLockHeld || networkLockQueue.length === 0) return;
+  networkLockHeld = true;
+  const { fn, resolve, reject } = networkLockQueue.shift();
+  Promise.resolve()
+    .then(() => fn())
+    .then(resolve, reject)
+    .finally(() => {
+      networkLockHeld = false;
+      drainNetworkLock();
+    });
+}
+
+// Returns the local source staging path for a given original file path.
+function localSourcePath(filePath, settings) {
+  const tempDir = settings.tempDir || 'C:\\TempHBMG';
+  const srcDir = path.join(tempDir, 'source');
+  // Preserve just the filename — same name, flat inside source\
+  return path.join(srcDir, path.basename(filePath));
+}
+
+// Returns the local transcode output path for a given original file path.
+function localTranscodePath(filePath, settings, outputExtension) {
+  const tempDir = settings.tempDir || 'C:\\TempHBMG';
+  const transcodeDir = path.join(tempDir, 'transcodes');
+  const baseName = path.basename(filePath, path.extname(filePath));
+  return path.join(transcodeDir, baseName + outputExtension);
+}
+
+// Kick off prefetch loop: copies files from networkQueue into local source\
+// one at a time while staged count < maxEngines.
+function triggerPrefetch(hbPath, settings) {
+  if (prefetchInProgress) return;
+  prefetchInProgress = true;
+  _prefetchNext(hbPath, settings);
+}
+
+async function _prefetchNext(hbPath, settings) {
+  // Stop if nothing left to prefetch or staged depth already at cap
+  if (!isTranscodingActive || networkQueue.length === 0 || stagedFiles.size >= maxEngines) {
+    prefetchInProgress = false;
+    return;
+  }
+
+  const file = networkQueue.shift();
+  const srcPath  = localSourcePath(file.fullPath, settings);
+
+  mainWindow.webContents.send('transcode-log', {
+    filePath: file.fullPath,
+    text: `[Network] Copying to local staging: ${file.name}\n`
+  });
+  mainWindow.webContents.send('transcode-progress', {
+    filePath: file.fullPath, percent: 0, fps: 0, avgFps: 0, eta: 'Staging...'
+  });
+
+  try {
+    await withNetworkLock(() => copyFileAsync(file.fullPath, srcPath));
+    stagedFiles.set(file.fullPath, srcPath);
+    mainWindow.webContents.send('transcode-log', {
+      filePath: file.fullPath,
+      text: `[Network] Staging complete: ${file.name}\n`
+    });
+    // Start the transcode immediately for this staged file
+    processNextInQueue(hbPath, settings);
+  } catch (err) {
+    mainWindow.webContents.send('transcode-log', {
+      filePath: file.fullPath,
+      text: `[Network Error] Failed to stage ${file.name}: ${err.message}\n`
+    });
+    mainWindow.webContents.send('transcode-file-complete', {
+      filePath: file.fullPath, success: false, error: `Stage failed: ${err.message}`
+    });
+  }
+
+  // Continue prefetching next file
+  _prefetchNext(hbPath, settings);
+}
+
 // Suspend process helper
 function suspendProcess(pid) {
   const cmd = `powershell -Command "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class P { [DllImport(\\\"ntdll.dll\\\")] public static extern int NtSuspendProcess(IntPtr h); }'; [P]::NtSuspendProcess((Get-Process -Id ${pid}).Handle)"`;
@@ -395,6 +537,9 @@ function resumeProcess(pid) {
 ipcMain.handle('stop-transcode', () => {
   isTranscodingActive = false;
   transcodeQueue = [];
+  networkQueue = [];
+  stagedFiles.clear();
+  prefetchInProgress = false;
   pausedJobs.clear();
   
   // Kill all running jobs
@@ -423,6 +568,8 @@ ipcMain.handle('set-max-engines', (event, count) => {
     for (let i = 0; i < Math.min(spare, transcodeQueue.length); i++) {
       processNextInQueue(tools.handbrake, settings);
     }
+    // Also expand prefetch depth for any UNC files now that cap increased
+    triggerPrefetch(tools.handbrake, settings);
   }
   // Lowering the cap requires no action: processNextInQueue enforces the new
   // limit, so finished engines above it are simply not replaced.
@@ -565,20 +712,22 @@ ipcMain.handle('start-transcode', async (event, files, config) => {
   isTranscodingActive = true;
   currentConfig = config;
   maxEngines = Math.max(1, Math.min(8, config.engines || settings.engines));
-  transcodeQueue = [...files]; // Queue is array of file records
+  transcodeQueue = [...files];
 
-  // Ensure Temp Directory exists if Option #1 (Replace) is used
-  if (config.mode === 'replace') {
-    const tempDir = settings.tempDir || 'C:\\TempHBMG';
-    if (!fs.existsSync(tempDir)) {
-      try {
-        fs.mkdirSync(tempDir, { recursive: true });
-      } catch (err) {
-        console.error(`Failed to create temp directory ${tempDir}:`, err);
-        isTranscodingActive = false;
-        throw new Error(`Failed to create Temp Directory ${tempDir}. Check permissions.`);
-      }
-    }
+  // Reset UNC pipeline state for the new run
+  networkQueue = [];
+  stagedFiles.clear();
+  prefetchInProgress = false;
+
+  // Ensure TempHBMG\source\ and TempHBMG\transcodes\ exist
+  const tempDir = settings.tempDir || 'C:\\TempHBMG';
+  try {
+    fs.mkdirSync(path.join(tempDir, 'source'), { recursive: true });
+    fs.mkdirSync(path.join(tempDir, 'transcodes'), { recursive: true });
+  } catch (err) {
+    console.error(`Failed to create temp directories:`, err);
+    isTranscodingActive = false;
+    throw new Error(`Failed to create Temp Directory ${tempDir}. Check permissions.`);
   }
 
   // Start workers
@@ -591,75 +740,124 @@ ipcMain.handle('start-transcode', async (event, files, config) => {
 
 // Process Next Item in Queue
 async function processNextInQueue(hbPath, settings) {
-  if (!isTranscodingActive || transcodeQueue.length === 0) {
-    if (activeJobs.size === 0 && isTranscodingActive) {
+  if (!isTranscodingActive) {
+    if (activeJobs.size === 0) {
       isTranscodingActive = false;
       mainWindow.webContents.send('transcode-queue-complete');
     }
     return;
   }
 
-  // Respect the current engine cap. When the cap has been lowered, finished
-  // engines above the new limit are not replaced until active count drops below it.
-  if (activeJobs.size >= maxEngines) {
-    return;
+  // Respect the current engine cap.
+  if (activeJobs.size >= maxEngines) return;
+
+  // For UNC sources: pop from stagedFiles (already local-copied) rather than transcodeQueue.
+  // For local sources: pop directly from transcodeQueue.
+  // Determine which file to run next.
+  let file = null;
+  let isUncFile = false;
+  let localInputPath = null;
+
+  // Check if any staged (UNC pre-fetched) file is ready and we have engine capacity
+  for (const [origPath, srcLocal] of stagedFiles.entries()) {
+    // Only pick staged files that are NOT already actively transcoding
+    if (!activeJobs.has(origPath)) {
+      file = transcodeQueue.find(f => f.fullPath === origPath);
+      if (!file) {
+        // File was staged but already removed from queue (e.g. stop-job), clean up
+        stagedFiles.delete(origPath);
+        try { if (fs.existsSync(srcLocal)) fs.unlinkSync(srcLocal); } catch(e) {}
+        continue;
+      }
+      transcodeQueue.splice(transcodeQueue.indexOf(file), 1);
+      isUncFile = true;
+      localInputPath = srcLocal;
+      break;
+    }
   }
 
-  let file;
-  try {
-    file = transcodeQueue.shift();
-    if (!file) return;
+  // No staged UNC file ready — try a local file from the queue
+  if (!file) {
+    if (transcodeQueue.length === 0) {
+      // Queue empty and no active jobs means we are done
+      if (activeJobs.size === 0 && networkQueue.length === 0 && stagedFiles.size === 0) {
+        isTranscodingActive = false;
+        mainWindow.webContents.send('transcode-queue-complete');
+      }
+      return;
+    }
 
-    const filePath = file.fullPath;
-    
+    // Peek: is the next file UNC? If so it must go through prefetch, not direct.
+    const candidate = transcodeQueue[0];
+    const isNet = await isNetworkPath(candidate.fullPath);
+    if (isNet) {
+      // Route into the network prefetch pipeline instead of starting directly.
+      // Move ALL queued files (including candidate) to networkQueue if not already there.
+      const networkPaths = new Set(networkQueue.map(f => f.fullPath));
+      const toStage = transcodeQueue.filter(f => !networkPaths.has(f.fullPath) && !stagedFiles.has(f.fullPath) && !activeJobs.has(f.fullPath));
+      networkQueue.push(...toStage);
+      transcodeQueue = transcodeQueue.filter(f => !toStage.find(t => t.fullPath === f.fullPath));
+      triggerPrefetch(hbPath, settings);
+      return;
+    }
+
+    // Local file — take it directly
+    file = transcodeQueue.shift();
+    isUncFile = false;
+    localInputPath = file.fullPath;
+  }
+
+  let fileIsUncSource;
+  try {
+    fileIsUncSource = isUncFile || await isNetworkPath(file.fullPath);
+  } catch(e) {
+    fileIsUncSource = isUncFile;
+  }
+
+  let fffile = file;
+  try {
+    const filePath = fffile.fullPath;
+
+    // Use configured preset format if available, else default to .mkv
+    const outputExtension = (currentConfig.presetFile && currentConfig.presetFile.toLowerCase().endsWith('.mp4')) ? '.mp4' : '.mkv';
+    const baseNameWithoutExt = path.basename(filePath, path.extname(filePath));
+    const outputFileName = baseNameWithoutExt + outputExtension;
+
     // Create output path based on rules
     let tempOutPath = '';
     let finalOutPath = '';
 
-    const ext = '.mkv'; // Default fallback output extension
-    // Use configured preset format if available, else default to .mkv
-    const outputExtension = (currentConfig.presetFile && currentConfig.presetFile.toLowerCase().endsWith('.mp4')) ? '.mp4' : '.mkv';
-
-    const baseNameWithoutExt = path.basename(filePath, path.extname(filePath));
-    const outputFileName = baseNameWithoutExt + outputExtension;
-
     if (currentConfig.mode === 'replace') {
-      const tempDir = settings.tempDir || 'C:\\TempHBMG';
-      if (currentConfig.replaceAction === 'move') {
-        // Option #1 - Move: Transcode to TempDir\Filename.EXT (flat)
-        tempOutPath = path.join(tempDir, outputFileName);
-        finalOutPath = path.join(path.dirname(filePath), outputFileName);
-      } else {
-        // Option #1 - Copy: Transcode to TempDir\Foldername\Filename.EXT
-        // Re-create folder structure inside Temp directory
-        // We will place it under TempDir\FolderName\Filename.EXT
-        const parentDirName = path.basename(path.dirname(filePath));
-        const targetTempDir = path.join(tempDir, parentDirName);
-        
-        try {
-          fs.mkdirSync(targetTempDir, { recursive: true });
-        } catch (err) {}
-        
-        tempOutPath = path.join(targetTempDir, outputFileName);
-        finalOutPath = path.join(path.dirname(filePath), outputFileName);
-      }
+      // For UNC sources: always write transcode output to local transcodes\
+      // For local sources: write to TempHBMG as before
+      tempOutPath = localTranscodePath(filePath, settings, outputExtension);
+      try { fs.mkdirSync(path.dirname(tempOutPath), { recursive: true }); } catch(e) {}
+      finalOutPath = path.join(path.dirname(filePath), outputFileName);
     } else {
-      // Option #2 - Transcode to Directory
-      // Re-create directory structure on destination folder
-      // Relative path from source root directory
-      const destDir = currentConfig.destinationDir;
-      const finalDir = path.join(destDir, path.dirname(file.relativePath));
-      
-      try {
-        fs.mkdirSync(finalDir, { recursive: true });
-      } catch (err) {}
-
-      tempOutPath = path.join(finalDir, outputFileName);
-      finalOutPath = tempOutPath; // No copy/move step needed, goes direct
+      // Option #2 - Transcode to Destination Directory
+      if (fileIsUncSource) {
+        // Local intermediate then move-back to destination
+        tempOutPath = localTranscodePath(filePath, settings, outputExtension);
+        try { fs.mkdirSync(path.dirname(tempOutPath), { recursive: true }); } catch(e) {}
+        const destDir = currentConfig.destinationDir;
+        const finalDir = path.join(destDir, path.dirname(fffile.relativePath));
+        try { fs.mkdirSync(finalDir, { recursive: true }); } catch(e) {}
+        finalOutPath = path.join(finalDir, outputFileName);
+      } else {
+        // Local source: write straight to destination
+        const destDir = currentConfig.destinationDir;
+        const finalDir = path.join(destDir, path.dirname(fffile.relativePath));
+        try { fs.mkdirSync(finalDir, { recursive: true }); } catch(e) {}
+        tempOutPath = path.join(finalDir, outputFileName);
+        finalOutPath = tempOutPath;
+      }
     }
 
+    // HandBrake reads from local staged copy (UNC) or directly (local)
+    const hbInputPath = isUncFile ? localInputPath : filePath;
+
     // Construct HandBrake Arguments
-    const args = ['-i', filePath, '-o', tempOutPath];
+    const args = ['-i', hbInputPath, '-o', tempOutPath];
 
     // Apply Presets or custom per-file transcode configs
     if (currentConfig.presetFile && currentConfig.presetName) {
@@ -732,7 +930,7 @@ async function processNextInQueue(hbPath, settings) {
 
     mainWindow.webContents.send('transcode-log', {
       filePath: filePath,
-      text: `Starting encode for: ${file.name}\nCommand: HandBrakeCLI ${args.join(' ')}\n`
+      text: `Starting encode for: ${fffile.name}\nInput: ${hbInputPath}\nCommand: HandBrakeCLI ${args.join(' ')}\n`
     });
 
     const hbProc = spawn(hbPath, args);
@@ -740,50 +938,30 @@ async function processNextInQueue(hbPath, settings) {
 
     // Send initial progress update
     mainWindow.webContents.send('transcode-progress', {
-      filePath: filePath,
-      percent: 0,
-      fps: 0,
-      avgFps: 0,
-      eta: 'Calculating...'
+      filePath: filePath, percent: 0, fps: 0, avgFps: 0, eta: 'Calculating...'
     });
 
     // Parse stdout chunk by chunk
     let buffer = '';
     hbProc.stdout.on('data', (data) => {
       buffer += data.toString();
-      // Split by \r or \n since HandBrake uses \r to overwrite progress
       const lines = buffer.split(/[\r\n]+/);
-      // Keep the last incomplete part in buffer
       buffer = lines.pop();
-
       for (const line of lines) {
         if (line.trim()) {
           mainWindow.webContents.send('transcode-log', { filePath: filePath, text: line });
-          
-          // Parse progress line:
-          // Encoding: task 1 of 1, 12.34 % (15.54 fps, avg 15.22 fps, ETA 00h02m10s)
           const percentMatch = line.match(/Encoding: task \d+ of \d+,\s*([\d\.]+)\s*%/);
           if (percentMatch) {
             const percent = parseFloat(percentMatch[1]);
-            let fps = 0;
-            let avgFps = 0;
-            let eta = 'Calculating...';
-
+            let fps = 0, avgFps = 0, eta = 'Calculating...';
             const fpsMatch = line.match(/\(\s*([\d\.]+)\s*fps/);
             if (fpsMatch) fps = parseFloat(fpsMatch[1]);
-
             const avgFpsMatch = line.match(/avg\s*([\d\.]+)\s*fps/);
             if (avgFpsMatch) avgFps = parseFloat(avgFpsMatch[1]);
-
             const etaMatch = line.match(/ETA\s*([^\)]+)/);
             if (etaMatch) eta = etaMatch[1].trim();
-
             mainWindow.webContents.send('transcode-progress', {
-              filePath: filePath,
-              percent: percent,
-              fps: fps,
-              avgFps: avgFps,
-              eta: eta
+              filePath: filePath, percent, fps, avgFps, eta
             });
           }
         }
@@ -792,10 +970,17 @@ async function processNextInQueue(hbPath, settings) {
 
     hbProc.stderr.on('data', (data) => {
       mainWindow.webContents.send('transcode-log', {
-        filePath: filePath,
-        text: `[Error] ${data.toString()}`
+        filePath: filePath, text: `[Error] ${data.toString()}`
       });
     });
+
+    // Helper: delete local staged source copy after transcode
+    function cleanupLocalSource() {
+      if (isUncFile && localInputPath) {
+        stagedFiles.delete(filePath);
+        try { if (fs.existsSync(localInputPath)) fs.unlinkSync(localInputPath); } catch(e) {}
+      }
+    }
 
     hbProc.on('error', (err) => {
       console.error(`HandBrake process error for ${filePath}:`, err);
@@ -803,125 +988,122 @@ async function processNextInQueue(hbPath, settings) {
         filePath: filePath,
         text: `[Process Error] Failed to execute HandBrake: ${err.message}\n`
       });
-      
       if (activeJobs.has(filePath)) {
         activeJobs.delete(filePath);
+        cleanupLocalSource();
+        try { if (fs.existsSync(tempOutPath)) fs.unlinkSync(tempOutPath); } catch(e) {}
         mainWindow.webContents.send('transcode-file-complete', {
-          filePath: filePath,
-          success: false,
-          error: err.message
+          filePath: filePath, success: false, error: err.message
         });
-        
-        // Cleanup failed partial output
-        try {
-          if (fs.existsSync(tempOutPath)) {
-            fs.unlinkSync(tempOutPath);
-          }
-        } catch(e) {}
-        
         processNextInQueue(hbPath, settings);
+        triggerPrefetch(hbPath, settings);
       }
     });
 
     hbProc.on('close', async (code) => {
       activeJobs.delete(filePath);
-      
+
       if (code === 0) {
         mainWindow.webContents.send('transcode-log', {
-          filePath: filePath,
-          text: `Encoding completed successfully (Code: ${code}).\n`
+          filePath: filePath, text: `Encoding completed successfully (Code: ${code}).\n`
         });
 
-        // Execute file management steps (Move / Copy for Option #1)
         let fileOpSuccess = true;
         try {
-          if (currentConfig.mode === 'replace') {
-            if (currentConfig.replaceAction === 'move') {
-              // Delete original file
-              if (fs.existsSync(filePath)) {
-                mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Deleting original file: ${filePath}\n` });
-                fs.unlinkSync(filePath);
+          // For UNC destinations, copy-back via network lock.
+          // For local destinations, rename/copy directly (fast, no network needed).
+          const destIsNetwork = finalOutPath !== tempOutPath && await isNetworkPath(finalOutPath).catch(() => false);
+
+          const doFileOps = async () => {
+            if (currentConfig.mode === 'replace') {
+              if (currentConfig.replaceAction === 'move') {
+                // Delete original, move transcoded to its place
+                if (fs.existsSync(filePath)) {
+                  mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Deleting original: ${filePath}\n` });
+                  fs.unlinkSync(filePath);
+                }
+                mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Moving to: ${finalOutPath}\n` });
+                try { fs.mkdirSync(path.dirname(finalOutPath), { recursive: true }); } catch(e) {}
+                fs.renameSync(tempOutPath, finalOutPath);
+              } else {
+                // Copy transcoded to original location (keep both)
+                mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Copying to: ${finalOutPath}\n` });
+                try { fs.mkdirSync(path.dirname(finalOutPath), { recursive: true }); } catch(e) {}
+                fs.copyFileSync(tempOutPath, finalOutPath);
               }
-              // Move transcoded file
-              mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Moving transcoded file to original path: ${finalOutPath}\n` });
-              fs.renameSync(tempOutPath, finalOutPath);
             } else {
-              // Copy transcoded file (Option #2 Copy replaces original, but retains the file in TempHBMG\FolderName\Filename.EXT)
-              mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Replacing original file via Copy: ${finalOutPath}\n` });
-              fs.copyFileSync(tempOutPath, finalOutPath);
-            }
-          } else {
-            // Option #1 (Transcode to custom directory) automatic post-transcode action
-            if (currentConfig.postAction === 'move') {
-              const originalReplacePath = path.join(path.dirname(filePath), outputFileName);
-              if (fs.existsSync(filePath)) {
-                mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `[Post-Action] Deleting original file: ${filePath}\n` });
-                fs.unlinkSync(filePath);
+              // Option #2: Transcode to Destination Directory
+              if (fileIsUncSource || destIsNetwork) {
+                // temp → destination (network write)
+                mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `Copying to destination: ${finalOutPath}\n` });
+                await copyFileAsync(tempOutPath, finalOutPath);
+                // Clean up local transcode temp
+                try { fs.unlinkSync(tempOutPath); } catch(e) {}
               }
-              mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `[Post-Action] Moving transcoded file: ${tempOutPath} -> ${originalReplacePath}\n` });
-              fs.renameSync(tempOutPath, originalReplacePath);
-              finalOutPath = originalReplacePath;
-            } else if (currentConfig.postAction === 'copy') {
-              const originalReplacePath = path.join(path.dirname(filePath), outputFileName);
-              mainWindow.webContents.send('transcode-log', { filePath: filePath, text: `[Post-Action] Replacing original file via Copy: ${originalReplacePath}\n` });
-              fs.copyFileSync(tempOutPath, originalReplacePath);
-              finalOutPath = originalReplacePath;
+              // Post-action for Option #2 (local destination handled already by direct write)
+              if (!fileIsUncSource && !destIsNetwork) {
+                if (currentConfig.postAction === 'move') {
+                  const origReplace = path.join(path.dirname(filePath), outputFileName);
+                  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                  fs.renameSync(tempOutPath, origReplace);
+                  finalOutPath = origReplace;
+                } else if (currentConfig.postAction === 'copy') {
+                  const origReplace = path.join(path.dirname(filePath), outputFileName);
+                  fs.copyFileSync(tempOutPath, origReplace);
+                  finalOutPath = origReplace;
+                }
+              }
             }
+          };
+
+          // Use network lock only when we need to write to a network destination
+          if (destIsNetwork || (isUncFile && currentConfig.mode !== 'transcodeDir')) {
+            await withNetworkLock(doFileOps);
+          } else {
+            await doFileOps();
           }
+
         } catch (err) {
           fileOpSuccess = false;
           mainWindow.webContents.send('transcode-log', {
-            filePath: filePath,
-            text: `[File Operation Failed] ${err.message}\n`
+            filePath: filePath, text: `[File Operation Failed] ${err.message}\n`
           });
         }
 
+        // Clean up local staged source copy now that transcode + move-back are done
+        cleanupLocalSource();
+
         mainWindow.webContents.send('transcode-file-complete', {
-          filePath: filePath,
-          success: fileOpSuccess,
-          finalPath: finalOutPath
+          filePath: filePath, success: fileOpSuccess, finalPath: finalOutPath
         });
       } else {
         mainWindow.webContents.send('transcode-log', {
-          filePath: filePath,
-          text: `Encoding failed with exit code: ${code}\n`
+          filePath: filePath, text: `Encoding failed with exit code: ${code}\n`
         });
-
+        cleanupLocalSource();
+        try { if (fs.existsSync(tempOutPath)) fs.unlinkSync(tempOutPath); } catch(e) {}
         mainWindow.webContents.send('transcode-file-complete', {
-          filePath: filePath,
-          success: false,
-          error: `Exit code ${code}`
+          filePath: filePath, success: false, error: `Exit code ${code}`
         });
-
-        // Cleanup failed partial output
-        try {
-          if (fs.existsSync(tempOutPath)) {
-            fs.unlinkSync(tempOutPath);
-          }
-        } catch(e) {}
       }
 
-      // Process next item
+      // A transcode slot freed up — start another encode and trigger prefetch for next set
       processNextInQueue(hbPath, settings);
+      triggerPrefetch(hbPath, settings);
     });
 
   } catch (err) {
     console.error('Error starting next job in queue:', err);
-    if (file) {
+    if (fffile) {
       mainWindow.webContents.send('transcode-log', {
-        filePath: file.fullPath,
+        filePath: fffile.fullPath,
         text: `[Internal Error] Failed to start transcode: ${err.message}\n`
       });
       mainWindow.webContents.send('transcode-file-complete', {
-        filePath: file.fullPath,
-        success: false,
-        error: err.message
+        filePath: fffile.fullPath, success: false, error: err.message
       });
     }
-    // Continue with the next file
-    setTimeout(() => {
-      processNextInQueue(hbPath, settings);
-    }, 100);
+    setTimeout(() => processNextInQueue(hbPath, settings), 100);
   }
 }
 
