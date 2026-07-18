@@ -73,8 +73,8 @@ C:\TempHBMG\
 
 | Strategy | Description |
 |---|---|
-| **Transcode to Destination Folder** | Encode directly to a separate output directory, preserving library folder structure |
-| **Replace Source Files (Temp Directory)** | Encode to a local temp folder first, then replace or copy back to the original location — prevents corrupted originals if the process is interrupted |
+| **Option #1: Transcode to Destination Folder** | Transcodes directly to another output folder preserving library structures. |
+| **Option #2: Replace Source Files (Temp Directory)** | Transcodes to a temp folder first, then replaces the source files (highly recommended to prevent duplicates). |
 
 ### 📊 Real-Time Monitoring
 - Live progress bar, FPS, average FPS, and ETA per file

@@ -834,23 +834,23 @@ async function processNextInQueue(hbPath, settings) {
     let tempOutPath = '';
     let finalOutPath = '';
 
-    if (currentConfig.mode === 'replace') {
-      // Option 1: Replace source file.
-      // Transcode output always goes to local TempHBMG\transcodes\ (safe intermediate).
-      // After transcode, move or copy to the original file's directory — exactly the same
-      // behaviour whether the source is local or UNC. UNC staging only affects the INPUT.
-      tempOutPath = localTranscodePath(filePath, settings, outputExtension);
-      try { fs.mkdirSync(path.dirname(tempOutPath), { recursive: true }); } catch(e) {}
-      finalOutPath = path.join(path.dirname(filePath), outputFileName);
-    } else {
-      // Option 2: Transcode to Destination Directory.
+    if (currentConfig.mode === 'transcodeDir') {
+      // Option #1: Transcode to Destination Folder.
       // HandBrake writes directly to the configured destination — no local intermediate.
-      // UNC staging only affects the INPUT path (hbInputPath), not the output.
+      // UNC staging ONLY affects the INPUT path (hbInputPath), not the output routing.
       const destDir = currentConfig.destinationDir;
       const finalDir = path.join(destDir, path.dirname(fffile.relativePath));
       try { fs.mkdirSync(finalDir, { recursive: true }); } catch(e) {}
       tempOutPath = path.join(finalDir, outputFileName);
       finalOutPath = tempOutPath;
+    } else {
+      // Option #2: Replace Source Files (Temp Directory).
+      // Transcode output ALWAYS goes to local TempHBMG\transcodes\ first (safe intermediate).
+      // After transcode, move or copy to the original file's directory.
+      // This is the "Replace" behavior that prevents duplicates/corruption.
+      tempOutPath = localTranscodePath(filePath, settings, outputExtension);
+      try { fs.mkdirSync(path.dirname(tempOutPath), { recursive: true }); } catch(e) {}
+      finalOutPath = path.join(path.dirname(filePath), outputFileName);
     }
 
     // HandBrake reads from local staged copy (UNC) or directly (local)
@@ -1013,26 +1013,10 @@ async function processNextInQueue(hbPath, settings) {
 
         let fileOpSuccess = true;
         try {
-          if (currentConfig.mode === 'replace') {
-            // Option 1: move or copy the local transcode to the original file's location.
-            // This is always local-to-local (or local-to-UNC for the final write).
-            // Behaviour is identical whether the source was local or UNC.
-            if (currentConfig.replaceAction === 'move') {
-              if (fs.existsSync(filePath)) {
-                mainWindow.webContents.send('transcode-log', { filePath, text: `Deleting original: ${filePath}\n` });
-                fs.unlinkSync(filePath);
-              }
-              mainWindow.webContents.send('transcode-log', { filePath, text: `Moving to: ${finalOutPath}\n` });
-              try { fs.mkdirSync(path.dirname(finalOutPath), { recursive: true }); } catch(e) {}
-              fs.renameSync(tempOutPath, finalOutPath);
-            } else {
-              mainWindow.webContents.send('transcode-log', { filePath, text: `Copying to: ${finalOutPath}\n` });
-              try { fs.mkdirSync(path.dirname(finalOutPath), { recursive: true }); } catch(e) {}
-              fs.copyFileSync(tempOutPath, finalOutPath);
-            }
-          } else {
-            // Option 2: output was already written directly to the destination by HandBrake.
-            // Apply post-action if configured.
+          if (currentConfig.mode === 'transcodeDir') {
+            // Option #1: Transcode to Destination Folder.
+            // Output was already written directly to the destination by HandBrake.
+            // Apply post-action (Copy/Move back to source) if configured.
             if (currentConfig.postAction === 'move') {
               const origReplace = path.join(path.dirname(filePath), outputFileName);
               mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Deleting original: ${filePath}\n` });
@@ -1046,7 +1030,23 @@ async function processNextInQueue(hbPath, settings) {
               fs.copyFileSync(tempOutPath, origReplace);
               finalOutPath = origReplace;
             }
-            // No post-action: file is already at finalOutPath, nothing to do.
+          } else {
+            // Option #2: Replace Source Files (Temp Directory).
+            // Move or copy the local transcode to the original file's location.
+            // This behavior is exactly the same whether the source was local or UNC.
+            if (currentConfig.replaceAction === 'move') {
+              if (fs.existsSync(filePath)) {
+                mainWindow.webContents.send('transcode-log', { filePath, text: `Deleting original: ${filePath}\n` });
+                fs.unlinkSync(filePath);
+              }
+              mainWindow.webContents.send('transcode-log', { filePath, text: `Moving to: ${finalOutPath}\n` });
+              try { fs.mkdirSync(path.dirname(finalOutPath), { recursive: true }); } catch(e) {}
+              fs.renameSync(tempOutPath, finalOutPath);
+            } else {
+              mainWindow.webContents.send('transcode-log', { filePath, text: `Copying to: ${finalOutPath}\n` });
+              try { fs.mkdirSync(path.dirname(finalOutPath), { recursive: true }); } catch(e) {}
+              fs.copyFileSync(tempOutPath, finalOutPath);
+            }
           }
         } catch (err) {
           fileOpSuccess = false;
