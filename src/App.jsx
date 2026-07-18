@@ -928,14 +928,8 @@ export default function App() {
 
     // Gathers selected files
     const filesToProcess = scannedFiles.filter(f => selectedPaths.has(f.fullPath));
-    
-    // Clear logs
-    consoleLogsRef.current = {};
-    setActiveConsoleLog('');
-    setActiveConsoleFile(filesToProcess[0]);
 
-    // Setup queue state
-    const initialQueue = filesToProcess.map(f => ({
+    const newQueueItems = filesToProcess.map(f => ({
       file: f,
       percent: 0,
       speed: 0,
@@ -943,9 +937,6 @@ export default function App() {
       eta: 'Waiting...',
       status: 'Queued'
     }));
-    
-    setQueue(initialQueue);
-    setIsTranscoding(true);
 
     const config = {
       engines: enginesCount,
@@ -957,6 +948,32 @@ export default function App() {
       presetName: settings.handbrakePresetName,
       fileConfigs: fileConfigs
     };
+
+    // If a queue is already running, append to it instead of starting fresh.
+    if (isTranscoding) {
+      const existingPaths = new Set(queue.map(i => i.file.fullPath));
+      const toAdd = newQueueItems.filter(i => !existingPaths.has(i.file.fullPath));
+      if (toAdd.length === 0) {
+        showToast('Queue', 'Selected files are already in the queue.', 'warning');
+        return;
+      }
+      setQueue(prev => [...prev, ...toAdd]);
+      try {
+        await window.api.appendTranscodeFiles(toAdd.map(i => i.file), config);
+        showToast('Queue Updated', `Added ${toAdd.length} file(s) to the running queue.`, 'success');
+      } catch (err) {
+        showToast('Queue Error', err.message);
+      }
+      return;
+    }
+
+    // Clear logs
+    consoleLogsRef.current = {};
+    setActiveConsoleLog('');
+    setActiveConsoleFile(filesToProcess[0]);
+
+    setQueue(newQueueItems);
+    setIsTranscoding(true);
 
     try {
       const res = await window.api.startTranscode(filesToProcess, config);
@@ -1242,7 +1259,6 @@ export default function App() {
             type="button"
             className="btn btn-secondary btn-sm"
             onClick={() => setSettingsOpen(true)}
-            disabled={isTranscoding}
           >
             <Settings size={14} />
             Settings
@@ -1496,7 +1512,6 @@ export default function App() {
                             className="table-select"
                             value={config.videoCodec}
                             onChange={(e) => handleUpdateConfig(file.fullPath, 'videoCodec', e.target.value)}
-                            disabled={isTranscoding}
                           >
                             <option value="h264">h264</option>
                             <option value="h265">h265</option>
@@ -1509,7 +1524,6 @@ export default function App() {
                             className="table-select"
                             value={config.quality}
                             onChange={(e) => handleUpdateConfig(file.fullPath, 'quality', parseInt(e.target.value))}
-                            disabled={isTranscoding}
                             style={{ minWidth: '70px' }}
                           >
                             {Array.from({ length: 21 }, (_, i) => 30 - i).map(q => (
@@ -1524,7 +1538,6 @@ export default function App() {
                             className="table-select"
                             value={config.framerate}
                             onChange={(e) => handleUpdateConfig(file.fullPath, 'framerate', e.target.value)}
-                            disabled={isTranscoding}
                           >
                             <option value="constant">Constant</option>
                             <option value="variable">Variable</option>
@@ -1537,7 +1550,6 @@ export default function App() {
                             className="table-select"
                             value={config.audioCodec}
                             onChange={(e) => handleUpdateConfig(file.fullPath, 'audioCodec', e.target.value)}
-                            disabled={isTranscoding}
                           >
                             <option value="AAC">AAC</option>
                             <option value="AC3">AC3</option>
@@ -1553,7 +1565,6 @@ export default function App() {
                             className="table-select"
                             value={config.audioSource1}
                             onChange={(e) => handleUpdateConfig(file.fullPath, 'audioSource1', e.target.value)}
-                            disabled={isTranscoding}
                           >
                             <option value="none">None</option>
                             {file.audioStreams.map((s, idx) => (
@@ -1570,7 +1581,6 @@ export default function App() {
                             className="table-select"
                             value={config.audioSource2}
                             onChange={(e) => handleUpdateConfig(file.fullPath, 'audioSource2', e.target.value)}
-                            disabled={isTranscoding}
                           >
                             <option value="none">None</option>
                             {file.audioStreams.map((s, idx) => (
@@ -1587,7 +1597,6 @@ export default function App() {
                             className="table-select"
                             value={config.subtitleSource1}
                             onChange={(e) => handleUpdateConfig(file.fullPath, 'subtitleSource1', e.target.value)}
-                            disabled={isTranscoding}
                           >
                             <option value="none">None</option>
                             {file.subtitleStreams.map((s, idx) => (
@@ -1604,7 +1613,6 @@ export default function App() {
                             className="table-select"
                             value={config.subtitleSource2}
                             onChange={(e) => handleUpdateConfig(file.fullPath, 'subtitleSource2', e.target.value)}
-                            disabled={isTranscoding}
                           >
                             <option value="none">None</option>
                             {file.subtitleStreams.map((s, idx) => (
@@ -1688,8 +1696,13 @@ export default function App() {
                 max="8" 
                 className="custom-slider"
                 value={enginesCount}
-                onChange={(e) => setEnginesCount(parseInt(e.target.value))}
-                disabled={isTranscoding}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value);
+                  setEnginesCount(n);
+                  if (isTranscoding) {
+                    window.api.setMaxEngines(n).catch(() => {});
+                  }
+                }}
               />
               <span className="slider-val">{enginesCount}</span>
             </div>
@@ -1924,7 +1937,6 @@ export default function App() {
                   style={{ width: '100%', maxWidth: '100%' }}
                   value={batchVideoCodec}
                   onChange={(e) => setBatchVideoCodec(e.target.value)}
-                  disabled={isTranscoding}
                 >
                   <option value="h264">H.264</option>
                   <option value="h265">H.265</option>
@@ -1938,7 +1950,6 @@ export default function App() {
                   style={{ width: '100%', maxWidth: '100%' }}
                   value={batchQuality}
                   onChange={(e) => setBatchQuality(parseInt(e.target.value))}
-                  disabled={isTranscoding}
                 >
                   {Array.from({ length: 21 }, (_, i) => 30 - i).map(q => (
                     <option key={q} value={q}>RF {q}</option>
@@ -1953,7 +1964,6 @@ export default function App() {
                   style={{ width: '100%', maxWidth: '100%' }}
                   value={batchFramerate}
                   onChange={(e) => setBatchFramerate(e.target.value)}
-                  disabled={isTranscoding}
                 >
                   <option value="constant">Constant</option>
                   <option value="variable">Variable</option>
@@ -1967,7 +1977,6 @@ export default function App() {
                   style={{ width: '100%', maxWidth: '100%' }}
                   value={batchAudioCodec}
                   onChange={(e) => setBatchAudioCodec(e.target.value)}
-                  disabled={isTranscoding}
                 >
                   <option value="AAC">AAC</option>
                   <option value="AC3">AC3</option>
@@ -1984,7 +1993,6 @@ export default function App() {
                   style={{ width: '100%', maxWidth: '100%' }}
                   value={batchAudioLang}
                   onChange={(e) => setBatchAudioLang(e.target.value)}
-                  disabled={isTranscoding}
                 >
                   <option value="eng">English (eng)</option>
                   <option value="spa">Spanish (spa)</option>
@@ -2006,7 +2014,6 @@ export default function App() {
                   style={{ width: '100%', maxWidth: '100%' }}
                   value={batchAudioLang2}
                   onChange={(e) => setBatchAudioLang2(e.target.value)}
-                  disabled={isTranscoding}
                 >
                   <option value="none">None</option>
                   <option value="eng">English (eng)</option>
@@ -2029,7 +2036,6 @@ export default function App() {
                   style={{ width: '100%', maxWidth: '100%' }}
                   value={batchSubLang}
                   onChange={(e) => setBatchSubLang(e.target.value)}
-                  disabled={isTranscoding}
                 >
                   <option value="none">None</option>
                   <option value="eng">English (eng)</option>
@@ -2052,7 +2058,6 @@ export default function App() {
                   style={{ width: '100%', maxWidth: '100%' }}
                   value={batchSubLang2}
                   onChange={(e) => setBatchSubLang2(e.target.value)}
-                  disabled={isTranscoding}
                 >
                   <option value="none">None</option>
                   <option value="eng">English (eng)</option>
@@ -2073,7 +2078,7 @@ export default function App() {
               className="btn btn-outline-blue btn-sm"
               style={{ width: '100%', marginTop: '6px' }}
               onClick={handleApplyBatchConfig}
-              disabled={isTranscoding || selectedPaths.size === 0}
+              disabled={selectedPaths.size === 0}
             >
               Apply to Selected ({selectedPaths.size})
             </button>
@@ -2132,6 +2137,15 @@ export default function App() {
                     RESUME ALL
                   </button>
                 </div>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', padding: '10px', background: 'var(--accent)' }} 
+                  onClick={handleStartTranscode}
+                  disabled={scannedFiles.length === 0 || selectedPaths.size === 0}
+                >
+                  <Play size={16} />
+                  ADD TO QUEUE ({selectedPaths.size} files)
+                </button>
                 <button className="btn btn-danger" style={{ width: '100%', padding: '12px' }} onClick={handleStopTranscode}>
                   <Square size={16} />
                   STOP QUEUE

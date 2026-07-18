@@ -411,6 +411,24 @@ ipcMain.handle('stop-transcode', () => {
   return { success: true };
 });
 
+// Dynamically change the concurrent engine cap while running
+ipcMain.handle('set-max-engines', (event, count) => {
+  maxEngines = Math.max(1, Math.min(8, parseInt(count, 10) || 1));
+
+  // If the cap was raised and work is running, spin up additional engines now.
+  if (isTranscodingActive) {
+    const settings = loadSettings();
+    const tools = getToolPaths(settings);
+    const spare = maxEngines - activeJobs.size;
+    for (let i = 0; i < Math.min(spare, transcodeQueue.length); i++) {
+      processNextInQueue(tools.handbrake, settings);
+    }
+  }
+  // Lowering the cap requires no action: processNextInQueue enforces the new
+  // limit, so finished engines above it are simply not replaced.
+  return { success: true, maxEngines };
+});
+
 // Pause individual job
 ipcMain.handle('pause-job', (event, filePath) => {
   const proc = activeJobs.get(filePath);
@@ -522,15 +540,26 @@ ipcMain.handle('remove-from-queue', (event, filePath) => {
 
 // Start Transcoding
 ipcMain.handle('start-transcode', async (event, files, config) => {
-  if (isTranscodingActive) {
-    return { success: false, message: 'Transcode is already running.' };
-  }
-
   const settings = loadSettings();
   const tools = getToolPaths(settings);
 
   if (!tools.handbrake) {
     throw new Error('HandBrakeCLI is not installed or not in PATH.');
+  }
+
+  // If a queue is already running, treat this as an append rather than rejecting.
+  if (isTranscodingActive) {
+    // Merge any per-file configs so newly added files transcode with their settings.
+    if (config && config.fileConfigs) {
+      currentConfig = currentConfig || config;
+      currentConfig.fileConfigs = { ...(currentConfig.fileConfigs || {}), ...config.fileConfigs };
+    }
+    transcodeQueue.push(...files);
+    // Fill any spare engine capacity with the newly queued work.
+    for (let i = 0; i < Math.min(maxEngines, transcodeQueue.length); i++) {
+      processNextInQueue(tools.handbrake, settings);
+    }
+    return { success: true, appended: true };
   }
 
   isTranscodingActive = true;
@@ -567,6 +596,12 @@ async function processNextInQueue(hbPath, settings) {
       isTranscodingActive = false;
       mainWindow.webContents.send('transcode-queue-complete');
     }
+    return;
+  }
+
+  // Respect the current engine cap. When the cap has been lowered, finished
+  // engines above the new limit are not replaced until active count drops below it.
+  if (activeJobs.size >= maxEngines) {
     return;
   }
 
@@ -1261,8 +1296,24 @@ ipcMain.handle('check-processed-status', async (event, files, checkConfig) => {
   }));
 });
 
-ipcMain.handle('append-transcode-files', async (event, files) => {
+ipcMain.handle('append-transcode-files', async (event, files, config) => {
+  // Merge any per-file configs for the appended files.
+  if (config && config.fileConfigs) {
+    currentConfig = currentConfig || config;
+    currentConfig.fileConfigs = { ...(currentConfig.fileConfigs || {}), ...config.fileConfigs };
+  }
+
   transcodeQueue.push(...files);
+
+  // If already running, use any spare engine capacity to start the new work.
+  if (isTranscodingActive) {
+    const settings = loadSettings();
+    const tools = getToolPaths(settings);
+    const spare = maxEngines - activeJobs.size;
+    for (let i = 0; i < Math.min(spare, transcodeQueue.length); i++) {
+      processNextInQueue(tools.handbrake, settings);
+    }
+  }
   return { success: true };
 });
 
