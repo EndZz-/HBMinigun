@@ -476,8 +476,15 @@ function triggerPrefetch(hbPath, settings) {
   if (networkQueue.length === 0) return;
   if (prefetchInProgress) return;          // already staging one — caller will be notified when done
 
-  // How many files are already in-flight (staged-but-not-started + actively transcoding)?
-  const inFlight = stagedFiles.size + activeJobs.size;
+  // How many files are already in-flight? A file that is actively transcoding
+  // remains in stagedFiles until it finishes, so it appears in BOTH activeJobs and
+  // stagedFiles. Count each file once: active jobs + staged files that have not
+  // started transcoding yet.
+  let stagedNotActive = 0;
+  for (const origPath of stagedFiles.keys()) {
+    if (!activeJobs.has(origPath)) stagedNotActive++;
+  }
+  const inFlight = activeJobs.size + stagedNotActive;
   if (inFlight >= maxEngines) return;      // all engine slots occupied — wait for a close event
 
   // Claim the slot synchronously BEFORE the first await
