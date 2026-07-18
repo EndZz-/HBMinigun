@@ -377,7 +377,7 @@ let forceClose = false;
 
 // ─── UNC / Network-path pipeline state ───────────────────────────────────────
 let networkLock = false;          // true while a copy-in or move-back is running
-let stagedFiles = new Map();      // key: original fullPath → localSourcePath (staged in TempHBMG\source\)
+let stagedFiles = new Map();      // key: original fullPath → { file, srcLocal } (staged in TempHBMG\source\)
 let networkQueue = [];            // files waiting to be copy-in'd (original file objects)
 let prefetchInProgress = false;   // guard so only one prefetch loop runs at a time
 const driveTypeCache = new Map(); // drive letter → true (network) | false (local)
@@ -496,7 +496,7 @@ function triggerPrefetch(hbPath, settings) {
   // Run the actual copy asynchronously — the guard is already set
   withNetworkLock(() => copyFileAsync(file.fullPath, srcPath))
     .then(() => {
-      stagedFiles.set(file.fullPath, srcPath);
+      stagedFiles.set(file.fullPath, { file, srcLocal: srcPath });
       mainWindow.webContents.send('transcode-log', {
         filePath: file.fullPath,
         text: `[Network] Staging complete: ${file.name}\n`
@@ -760,20 +760,16 @@ async function processNextInQueue(hbPath, settings) {
   let isUncFile = false;
   let localInputPath = null;
 
-  // Check if any staged (UNC pre-fetched) file is ready and we have engine capacity
-  for (const [origPath, srcLocal] of stagedFiles.entries()) {
+  // Check if any staged (UNC pre-fetched) file is ready and we have engine capacity.
+  // stagedFiles maps origPath -> { file, srcLocal }. Staged files are NOT in
+  // transcodeQueue — they were moved into the network pipeline — so we read the
+  // file object directly from the stagedFiles entry.
+  for (const [origPath, entry] of stagedFiles.entries()) {
     // Only pick staged files that are NOT already actively transcoding
     if (!activeJobs.has(origPath)) {
-      file = transcodeQueue.find(f => f.fullPath === origPath);
-      if (!file) {
-        // File was staged but already removed from queue (e.g. stop-job), clean up
-        stagedFiles.delete(origPath);
-        try { if (fs.existsSync(srcLocal)) fs.unlinkSync(srcLocal); } catch(e) {}
-        continue;
-      }
-      transcodeQueue.splice(transcodeQueue.indexOf(file), 1);
+      file = entry.file;
       isUncFile = true;
-      localInputPath = srcLocal;
+      localInputPath = entry.srcLocal;
       break;
     }
   }
