@@ -557,6 +557,56 @@ export default function App() {
     }
   };
 
+  // Refresh current scan dir without clearing — re-reads the same folder
+  const handleRefreshScan = async () => {
+    if (!scanDir) return;
+    await runScan(scanDir);
+  };
+
+  // Scan an additional folder and MERGE results into the existing list
+  const handleScanNewFolder = async () => {
+    try {
+      const folderPath = await window.api.selectDirectory();
+      if (!folderPath) return;
+      setIsScanning(true);
+      const checkConfig = {
+        transcodeMode,
+        destinationDir,
+        presetFile: settings.handbrakePresetPath
+      };
+      const newFiles = await window.api.scanDirectory(folderPath, checkConfig);
+      setScannedFiles(prev => {
+        const existingPaths = new Set(prev.map(f => f.fullPath));
+        return [...prev, ...newFiles.filter(f => !existingPaths.has(f.fullPath))];
+      });
+      // Init configs for new files
+      const newConfigs = {};
+      newFiles.forEach(file => {
+        let audioSrc1 = 'none';
+        if (file.audioStreams.length > 0) {
+          const engIdx = file.audioStreams.findIndex(s => s.language && languagesMatch(s.language, 'eng'));
+          audioSrc1 = engIdx !== -1 ? (engIdx + 1).toString() : '1';
+        }
+        let subSrc1 = 'none';
+        if (file.subtitleStreams.length > 0) {
+          const engIdx = file.subtitleStreams.findIndex(s => s.language && languagesMatch(s.language, 'eng'));
+          subSrc1 = engIdx !== -1 ? (engIdx + 1).toString() : 'none';
+        }
+        newConfigs[file.fullPath] = {
+          videoCodec: 'h264', quality: 20, framerate: 'constant',
+          audioCodec: 'AAC', audioSource1: audioSrc1,
+          audioSource2: 'none', subtitleSource1: subSrc1, subtitleSource2: 'none'
+        };
+      });
+      setFileConfigs(prev => ({ ...prev, ...newConfigs }));
+      showToast('Scan Added', `Added ${newFiles.length} files from ${folderPath}.`, 'success');
+    } catch (err) {
+      showToast('Scan Failed', err.message);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
   const runScan = async (folderPath) => {
     setIsScanning(true);
     setScannedFiles([]);
@@ -1279,6 +1329,28 @@ export default function App() {
                   {selectedPaths.size} selected
                 </span>
               )}
+              {scanDir && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleRefreshScan}
+                  disabled={isScanning}
+                  title={`Refresh: ${scanDir}`}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 8px', fontSize: '11px' }}
+                >
+                  <RefreshCw size={11} className={isScanning ? 'animate-spin' : ''} />
+                  Refresh
+                </button>
+              )}
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleScanNewFolder}
+                disabled={isScanning}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 8px', fontSize: '11px' }}
+                title="Scan an additional folder and merge results"
+              >
+                <FolderOpen size={11} />
+                Scan Folder
+              </button>
             </div>
             
             <div className="search-filter-row" style={{ flexDirection: 'column', gap: '6px', alignItems: 'stretch' }}>
@@ -2171,7 +2243,6 @@ export default function App() {
                   setSelectedPaths(new Set());
                   setScanDir('');
                 }}
-                disabled={isTranscoding}
               >
                 <Trash2 size={14} />
                 Clear scanned results
