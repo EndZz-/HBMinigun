@@ -853,7 +853,9 @@ async function processNextInQueue(hbPath, settings) {
     const hbInputPath = isUncFile ? localInputPath : filePath;
 
     // Construct HandBrake Arguments
-    const args = ['-i', hbInputPath, '-o', tempOutPath];
+    // --title 1 forces HandBrake to encode only the main title (prevents
+    // "task 3 of 3" style output when the source has multiple titles).
+    const args = ['-i', hbInputPath, '-o', tempOutPath, '--title', '1'];
 
     // Apply Presets or custom per-file transcode configs
     if (currentConfig.presetFile && currentConfig.presetName) {
