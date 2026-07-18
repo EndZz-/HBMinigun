@@ -101,7 +101,11 @@ function checkTool(name, configuredPath, defaultPaths) {
 
 // Get validated tool paths
 function getToolPaths(settings) {
+  // app.asar.unpacked is where asarUnpack files land — real filesystem paths the OS can execute
+  const unpackedBin = path.join(app.getAppPath(), '..', 'app.asar.unpacked', 'bin');
+
   const hbPath = checkTool('HandBrakeCLI', settings.handbrakePath, [
+    path.join(unpackedBin, 'HandBrakeCLI.exe'),
     path.join(app.getAppPath(), 'bin', 'HandBrakeCLI.exe'),
     path.join(app.getAppPath(), 'HandBrakeCLI.exe'),
     'C:\\Program Files\\Handbrake\\HandBrakeCLI.exe',
@@ -109,6 +113,7 @@ function getToolPaths(settings) {
   ]);
 
   const miPath = checkTool('MediaInfo', settings.mediaInfoPath, [
+    path.join(unpackedBin, 'MediaInfo.exe'),
     path.join(app.getAppPath(), 'bin', 'MediaInfo.exe'),
     path.join(app.getAppPath(), 'MediaInfo.exe'),
     'C:\\Program Files\\MediaInfo\\MediaInfo.exe'
