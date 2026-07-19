@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('api', {
   generateSamples: (args) => ipcRenderer.invoke('generate-samples', args),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   removeFromQueue: (filePath) => ipcRenderer.invoke('remove-from-queue', filePath),
+  getTranscodedFilesInfo: (files, config) => ipcRenderer.invoke('get-transcoded-files-info', files, config),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   downloadAndInstallUpdate: (downloadUrl) => ipcRenderer.invoke('download-and-install-update', downloadUrl),
   

@@ -1130,11 +1130,12 @@ function parseRawCli(rawString) {
 }
 
 // Manual trigger for post-transcode Move/Copy on Option #2
-ipcMain.handle('move-copy-files', async (event, files, config) => {
+ipcMain.handle('move-copy-files', async (event, items, config = {}) => {
   const results = [];
-  const mode = config.replaceAction; // 'move' or 'copy'
   
-  for (const file of files) {
+  for (const item of items) {
+    const file = item.file || item;
+    const mode = item.action || config.replaceAction || 'move';
     const filePath = file.fullPath;
     
     // Determine the transcode output location under Option #2
@@ -1142,7 +1143,12 @@ ipcMain.handle('move-copy-files', async (event, files, config) => {
     const baseNameWithoutExt = path.basename(filePath, path.extname(filePath));
     const outputFileName = baseNameWithoutExt + outputExtension;
     
-    const finalDir = path.join(config.destinationDir, path.dirname(file.relativePath));
+    const destDir = config.destinationDir || item.destinationDir;
+    if (!destDir) {
+      results.push({ filePath, success: false, error: 'Destination directory is not specified.' });
+      continue;
+    }
+    const finalDir = path.join(destDir, path.dirname(file.relativePath));
     const transcodedFileLocation = path.join(finalDir, outputFileName);
     
     // Original replaced location
@@ -1171,6 +1177,47 @@ ipcMain.handle('move-copy-files', async (event, files, config) => {
     }
   }
 
+  return results;
+});
+
+// Fetch actual sizes and status of transcoded files on disk
+ipcMain.handle('get-transcoded-files-info', async (event, files, config) => {
+  const results = [];
+  
+  for (const file of files) {
+    const filePath = file.fullPath;
+    const outputExtension = (config.presetFile && config.presetFile.toLowerCase().endsWith('.mp4')) ? '.mp4' : '.mkv';
+    const baseNameWithoutExt = path.basename(filePath, path.extname(filePath));
+    const outputFileName = baseNameWithoutExt + outputExtension;
+    
+    const destDir = config.destinationDir;
+    let transcodedExists = false;
+    let transcodedSize = 0;
+    let transcodedFileLocation = '';
+
+    if (destDir) {
+      const finalDir = path.join(destDir, path.dirname(file.relativePath));
+      transcodedFileLocation = path.join(finalDir, outputFileName);
+      
+      try {
+        if (fs.existsSync(transcodedFileLocation)) {
+          const stats = fs.statSync(transcodedFileLocation);
+          transcodedExists = true;
+          transcodedSize = stats.size;
+        }
+      } catch (e) {
+        console.error(`Failed to stat ${transcodedFileLocation}:`, e);
+      }
+    }
+    
+    results.push({
+      filePath,
+      transcodedFileLocation,
+      transcodedExists,
+      transcodedSize
+    });
+  }
+  
   return results;
 });
 

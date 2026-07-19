@@ -205,6 +205,11 @@ export default function App() {
   const [replaceAction, setReplaceAction] = useState('move'); // 'move', 'copy' (for Option #2 temp replacement)
   const [destinationDir, setDestinationDir] = useState('');
   
+  // Verify & Sync Modal States
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncItems, setSyncItems] = useState([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  
   // Resizing states for bottom queue drawer
   const [queueHeight, setQueueHeight] = useState(220);
   const [isResizingQueue, setIsResizingQueue] = useState(false);
@@ -1142,44 +1147,129 @@ export default function App() {
 
 
 
-  // Post transcode Copy/Move for Option #1 (transcodeDir)
+  // Post transcode Verify & Sync for Option #1 (transcodeDir)
   const [isPerformingMoveCopy, setIsPerformingMoveCopy] = useState(false);
-  const handleMoveCopyTranscoded = async (action) => {
-    const completedFiles = queue.filter(item => item.status === 'Completed').map(item => item.file);
-    
-    if (completedFiles.length === 0) {
-      showToast('Operation Failed', 'No successfully transcoded files exist in the current queue to move/copy.', 'warning');
+  
+  const handleOpenSyncModal = async () => {
+    const completedItems = queue.filter(item => item.status === 'Completed');
+    if (completedItems.length === 0) {
+      showToast('No Completed Files', 'No successfully transcoded files exist in the current queue to verify/sync.', 'warning');
       return;
     }
 
     if (transcodeMode !== 'transcodeDir' || !destinationDir) {
-      showToast('Operation Failed', 'Post-process Move/Copy is only available when transcoding to a directory.', 'warning');
+      showToast('Operation Failed', 'Post-process Verification & Sync is only available when transcoding to a directory.', 'warning');
       return;
     }
 
     setIsPerformingMoveCopy(true);
-    showToast('Executing Operations', `Running replacing (${action}) process on completed files...`, 'success');
-
     try {
+      const files = completedItems.map(item => item.file);
       const config = {
-        replaceAction: action,
-        destinationDir: destinationDir,
-        presetFile: settings.handbrakePresetPath
+        presetFile: settings.handbrakePresetPath,
+        destinationDir: destinationDir
       };
 
-      const results = await window.api.moveCopyFiles(completedFiles, config);
-      const failed = results.filter(r => !r.success);
+      const infoList = await window.api.getTranscodedFilesInfo(files, config);
+      
+      const mapped = completedItems.map(item => {
+        const info = infoList.find(infoItem => infoItem.filePath === item.file.fullPath) || {};
+        return {
+          file: item.file,
+          action: 'move', // default action
+          selected: true, // checked by default
+          transcodedSize: info.transcodedSize || 0,
+          transcodedExists: info.transcodedExists || false,
+          originalSize: item.file.sizeBytes || 0,
+          status: 'pending', // 'pending' | 'syncing' | 'success' | 'failed'
+          error: null,
+          transcodedFileLocation: info.transcodedFileLocation || ''
+        };
+      });
 
-      if (failed.length === 0) {
-        showToast('Operation Success', `Successfully processed ${results.length} files.`, 'success');
-      } else {
-        showToast('Operation Warning', `Processed ${results.length} files. ${failed.length} failed. Check console.`, 'warning');
-        console.error('Failed move/copy operations:', failed);
-      }
+      setSyncItems(mapped);
+      setSyncModalOpen(true);
     } catch (err) {
-      showToast('Operation Failed', err.message);
+      showToast('Sync Initialization Failed', err.message);
     } finally {
       setIsPerformingMoveCopy(false);
+    }
+  };
+
+  const handleExecuteSync = async () => {
+    const selectedItems = syncItems.filter(item => item.selected);
+    if (selectedItems.length === 0) {
+      showToast('No Items Selected', 'Please check at least one file to sync.', 'warning');
+      return;
+    }
+
+    setIsSyncing(true);
+    
+    // Set status of selected items to syncing
+    setSyncItems(prev => prev.map(item => 
+      item.selected ? { ...item, status: 'syncing', error: null } : item
+    ));
+
+    try {
+      // Prepare payload: each selected item has its action override
+      const payload = selectedItems.map(item => ({
+        file: item.file,
+        action: item.action,
+        destinationDir: destinationDir
+      }));
+
+      const config = {
+        presetFile: settings.handbrakePresetPath,
+        destinationDir: destinationDir
+      };
+
+      const results = await window.api.moveCopyFiles(payload, config);
+      
+      // Update statuses based on results
+      setSyncItems(prev => prev.map(item => {
+        const res = results.find(r => r.filePath === item.file.fullPath);
+        if (res) {
+          return {
+            ...item,
+            status: res.success ? 'success' : 'failed',
+            error: res.error || null
+          };
+        }
+        return item;
+      }));
+
+      // Update main queue status for the successfully synced files
+      const successfulPaths = new Set(results.filter(r => r.success).map(r => r.filePath));
+      if (successfulPaths.size > 0) {
+        setQueue(prev => prev.map(qItem => {
+          if (successfulPaths.has(qItem.file.fullPath)) {
+            return {
+              ...qItem,
+              status: 'Completed (Synced)'
+            };
+          }
+          return qItem;
+        }));
+      }
+
+      const failedCount = results.filter(r => !r.success).length;
+      if (failedCount === 0) {
+        showToast('Sync Complete', `Successfully synced all ${results.length} files.`, 'success');
+        // Close modal after brief delay for user to see success checkmarks
+        setTimeout(() => {
+          setSyncModalOpen(false);
+        }, 1500);
+      } else {
+        showToast('Sync Warning', `Sync completed with ${failedCount} errors. Please review failed items.`, 'warning');
+      }
+
+    } catch (err) {
+      showToast('Sync Operation Failed', err.message);
+      setSyncItems(prev => prev.map(item => 
+        item.status === 'syncing' ? { ...item, status: 'failed', error: err.message } : item
+      ));
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -1859,29 +1949,19 @@ export default function App() {
                   <option value="copy">Copy (Keep Transcoded & Replace Source)</option>
                 </select>
                 
-                <label style={{ color: 'var(--text-bright)', marginBottom: '8px', display: 'block', fontSize: '11px' }}>Manual Replacement Triggers</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <button 
-                    className="btn btn-outline-blue btn-sm"
-                    style={{ padding: '8px', fontSize: '10.5px' }}
-                    onClick={() => handleMoveCopyTranscoded('move')}
-                    disabled={isTranscoding || isPerformingMoveCopy || queue.length === 0}
-                  >
-                    {isPerformingMoveCopy ? <Loader2 size={10} className="animate-spin" /> : <Move size={10} />}
-                    MOVE Files
-                  </button>
-                  <button 
-                    className="btn btn-outline-blue btn-sm"
-                    style={{ padding: '8px', fontSize: '10.5px' }}
-                    onClick={() => handleMoveCopyTranscoded('copy')}
-                    disabled={isTranscoding || isPerformingMoveCopy || queue.length === 0}
-                  >
-                    {isPerformingMoveCopy ? <Loader2 size={10} className="animate-spin" /> : <Copy size={10} />}
-                    COPY Files
-                  </button>
-                </div>
+                <label style={{ color: 'var(--text-bright)', marginBottom: '8px', display: 'block', fontSize: '11px' }}>Manual Verification & Sync</label>
+                <button 
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  style={{ width: '100%', padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'var(--accent)' }}
+                  onClick={handleOpenSyncModal}
+                  disabled={isTranscoding || isPerformingMoveCopy || queue.filter(item => item.status === 'Completed').length === 0}
+                >
+                  {isPerformingMoveCopy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                  Verify & Sync Transcoded Files
+                </button>
                 <span className="text-muted" style={{ fontSize: '10.5px', marginTop: '8px', display: 'block' }}>
-                  Use the manual trigger buttons to manually Move or Copy successfully transcoded files in the queue to replace original library files.
+                  Compare output files on disk with original videos, customize per-file sync actions, and run the replacement process.
                 </span>
               </div>
             </div>
@@ -2406,6 +2486,19 @@ export default function App() {
         <DetailsModal 
           file={detailsFile} 
           onClose={() => setDetailsFile(null)} 
+        />
+      )}
+
+      {/* Verification & Sync Modal */}
+      {syncModalOpen && (
+        <SyncModal
+          isOpen={syncModalOpen}
+          syncItems={syncItems}
+          setSyncItems={setSyncItems}
+          onClose={() => setSyncModalOpen(false)}
+          onExecute={handleExecuteSync}
+          isSyncing={isSyncing}
+          formatBytes={formatBytes}
         />
       )}
 
@@ -3236,6 +3329,342 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SyncModal({ isOpen, syncItems, setSyncItems, onClose, onExecute, isSyncing, formatBytes }) {
+  if (!isOpen) return null;
+
+  const allSelected = syncItems.length > 0 && syncItems.every(i => i.selected);
+  const someSelected = syncItems.some(i => i.selected) && !allSelected;
+
+  const handleSelectAll = (checked) => {
+    setSyncItems(prev => prev.map(item => ({ ...item, selected: checked })));
+  };
+
+  const handleToggleSelect = (filePath) => {
+    setSyncItems(prev => prev.map(item => 
+      item.file.fullPath === filePath ? { ...item, selected: !item.selected } : item
+    ));
+  };
+
+  const handleSetAction = (filePath, action) => {
+    setSyncItems(prev => prev.map(item => 
+      item.file.fullPath === filePath ? { ...item, action } : item
+    ));
+  };
+
+  const handleSetAllActions = (action) => {
+    setSyncItems(prev => prev.map(item => ({ ...item, action })));
+  };
+
+  // Calculations
+  const selectedItems = syncItems.filter(item => item.selected);
+  const totalOriginalSize = selectedItems.reduce((acc, item) => acc + item.originalSize, 0);
+  const totalTranscodedSize = selectedItems.reduce((acc, item) => acc + item.transcodedSize, 0);
+  const spaceSavings = totalOriginalSize - totalTranscodedSize;
+  const savingsPercent = totalOriginalSize > 0 ? Math.round((spaceSavings / totalOriginalSize) * 100) : 0;
+  
+  const moveCount = selectedItems.filter(item => item.action === 'move').length;
+  const copyCount = selectedItems.filter(item => item.action === 'copy').length;
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 9999 }}>
+      <div className="modal-content" style={{ maxWidth: '1150px', width: '95vw', height: '85vh', maxHeight: '90vh', border: '1px solid var(--border)' }}>
+        
+        <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px' }}>
+          <div>
+            <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', color: 'var(--text-bright)' }}>
+              <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} style={{ color: 'var(--accent)' }} />
+              Sync & Replace Library Files
+            </h2>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
+              Verify transcoded output files on disk and select replacement operations before applying to original library files.
+            </span>
+          </div>
+          <button className="modal-close-btn" onClick={onClose} disabled={isSyncing}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div style={{ background: 'rgba(20, 23, 29, 0.2)', padding: '12px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          {/* Left Bulk Selection */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', userSelect: 'none', color: 'var(--text-bright)' }}>
+              <input 
+                type="checkbox" 
+                className="custom-checkbox"
+                checked={allSelected}
+                ref={el => {
+                  if (el) el.indeterminate = someSelected;
+                }}
+                onChange={(e) => handleSelectAll(e.target.checked)}
+                disabled={isSyncing}
+              />
+              Select All
+            </label>
+            
+            <div style={{ width: '1px', height: '16px', background: 'var(--border)' }} />
+            
+            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Bulk Actions:</span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                type="button" 
+                className="btn btn-outline-blue btn-xs"
+                style={{ padding: '4px 8px', fontSize: '11px' }}
+                onClick={() => handleSetAllActions('move')}
+                disabled={isSyncing}
+              >
+                Set All to Move
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-outline-blue btn-xs"
+                style={{ padding: '4px 8px', fontSize: '11px' }}
+                onClick={() => handleSetAllActions('copy')}
+                disabled={isSyncing}
+              >
+                Set All to Copy
+              </button>
+            </div>
+          </div>
+
+          {/* Warning check */}
+          {syncItems.some(i => !i.transcodedExists) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#fbbf24', fontSize: '11px', background: 'rgba(251, 191, 36, 0.1)', padding: '4px 10px', borderRadius: '4px', border: '1px solid rgba(251, 191, 36, 0.2)' }}>
+              <AlertTriangle size={12} />
+              Warning: Some transcoded files could not be found on disk.
+            </div>
+          )}
+        </div>
+
+        <div className="modal-body" style={{ flex: 1, padding: 0, overflowY: 'auto', background: '#0e1117' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
+            <thead>
+              <tr style={{ background: 'rgba(20, 23, 29, 0.6)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 1 }}>
+                <th style={{ padding: '10px 16px', width: '40px' }}></th>
+                <th style={{ padding: '10px 12px' }}>Transcoded Source (Output)</th>
+                <th style={{ padding: '10px 12px', width: '100px' }}>Size</th>
+                <th style={{ padding: '10px 12px', width: '140px', textAlign: 'center' }}>Sync Action</th>
+                <th style={{ padding: '10px 12px', width: '40px' }}></th>
+                <th style={{ padding: '10px 12px' }}>Original Target (Library)</th>
+                <th style={{ padding: '10px 12px', width: '100px' }}>Size</th>
+                <th style={{ padding: '10px 12px', width: '140px' }}>Savings</th>
+                <th style={{ padding: '10px 12px', width: '90px', textAlign: 'center' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {syncItems.map((item, idx) => {
+                const savingBytes = item.originalSize - item.transcodedSize;
+                const pctSaved = item.originalSize > 0 ? Math.round((savingBytes / item.originalSize) * 100) : 0;
+                
+                // Paths parsing
+                const sourceDir = item.transcodedFileLocation ? item.transcodedFileLocation.substring(0, item.transcodedFileLocation.lastIndexOf('\\') + 1) : '';
+                const sourceName = item.transcodedFileLocation ? item.transcodedFileLocation.substring(item.transcodedFileLocation.lastIndexOf('\\') + 1) : '';
+                
+                const targetDir = item.file.fullPath ? item.file.fullPath.substring(0, item.file.fullPath.lastIndexOf('\\') + 1) : '';
+                const targetName = item.file.fullPath ? item.file.fullPath.substring(item.file.fullPath.lastIndexOf('\\') + 1) : '';
+
+                return (
+                  <tr 
+                    key={idx} 
+                    style={{ 
+                      borderBottom: '1px solid rgba(46, 53, 71, 0.3)', 
+                      background: item.selected ? 'rgba(0, 132, 255, 0.02)' : 'rgba(0,0,0,0.15)',
+                      opacity: item.selected ? 1 : 0.6,
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    {/* Checkbox */}
+                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        className="custom-checkbox"
+                        checked={item.selected}
+                        onChange={() => handleToggleSelect(item.file.fullPath)}
+                        disabled={isSyncing}
+                      />
+                    </td>
+
+                    {/* Source File */}
+                    <td style={{ padding: '12px 12px', maxWidth: '300px' }}>
+                      {item.transcodedExists ? (
+                        <div>
+                          <div style={{ color: 'var(--text-bright)', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={sourceName}>
+                            {sourceName}
+                          </div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={sourceDir}>
+                            {sourceDir}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ color: '#ef4444' }}>
+                          <div style={{ fontWeight: '600', textDecoration: 'line-through' }}>{item.file.name.replace(/\.[^/.]+$/, '') + ((item.presetFile && item.presetFile.toLowerCase().endsWith('.mp4')) ? '.mp4' : '.mkv')}</div>
+                          <span style={{ fontSize: '10px' }}>File missing from output directory</span>
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Source Size */}
+                    <td style={{ padding: '12px 12px', color: 'var(--text-bright)' }}>
+                      {item.transcodedExists ? formatBytes(item.transcodedSize) : 'N/A'}
+                    </td>
+
+                    {/* Sync Action */}
+                    <td style={{ padding: '12px 12px', textAlign: 'center' }}>
+                      <div style={{ display: 'inline-flex', borderRadius: '4px', background: 'rgba(28, 32, 42, 0.8)', border: '1px solid var(--border)', padding: '2px' }}>
+                        <button
+                          type="button"
+                          style={{
+                            padding: '3px 8px',
+                            border: 'none',
+                            borderRadius: '3px',
+                            background: item.action === 'move' ? 'rgba(46, 196, 182, 0.2)' : 'transparent',
+                            color: item.action === 'move' ? '#2ec4b6' : 'var(--text-muted)',
+                            fontSize: '10.5px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s'
+                          }}
+                          onClick={() => handleSetAction(item.file.fullPath, 'move')}
+                          disabled={isSyncing}
+                        >
+                          Move
+                        </button>
+                        <button
+                          type="button"
+                          style={{
+                            padding: '3px 8px',
+                            border: 'none',
+                            borderRadius: '3px',
+                            background: item.action === 'copy' ? 'rgba(0, 132, 255, 0.2)' : 'transparent',
+                            color: item.action === 'copy' ? 'var(--accent)' : 'var(--text-muted)',
+                            fontSize: '10.5px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s'
+                          }}
+                          onClick={() => handleSetAction(item.file.fullPath, 'copy')}
+                          disabled={isSyncing}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </td>
+
+                    {/* Flow arrow */}
+                    <td style={{ padding: '12px 12px', textAlign: 'center', fontSize: '14px', color: item.action === 'move' ? '#2ec4b6' : 'var(--accent)' }}>
+                      {item.action === 'move' ? '➔' : '➱'}
+                    </td>
+
+                    {/* Target File */}
+                    <td style={{ padding: '12px 12px', maxWidth: '300px' }}>
+                      <div>
+                        <div style={{ color: 'var(--text-bright)', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={targetName}>
+                          {targetName}
+                        </div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={targetDir}>
+                          {targetDir}
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Target Size */}
+                    <td style={{ padding: '12px 12px', color: 'var(--text-bright)' }}>
+                      {formatBytes(item.originalSize)}
+                    </td>
+
+                    {/* Size Difference */}
+                    <td style={{ padding: '12px 12px' }}>
+                      {item.transcodedExists ? (
+                        savingBytes > 0 ? (
+                          <div style={{ color: '#4caf50', fontWeight: 'bold' }}>
+                            -{formatBytes(savingBytes)} (-{pctSaved}%)
+                          </div>
+                        ) : (
+                          <div style={{ color: '#f44336', fontWeight: 'bold' }}>
+                            +{formatBytes(Math.abs(savingBytes))} (+{Math.abs(pctSaved)}%)
+                          </div>
+                        )
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>N/A</span>
+                      )}
+                    </td>
+
+                    {/* Status */}
+                    <td style={{ padding: '12px 12px', textAlign: 'center' }}>
+                      {item.status === 'pending' && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Ready</span>}
+                      {item.status === 'syncing' && <Loader2 size={12} className="animate-spin" style={{ color: 'var(--accent)' }} />}
+                      {item.status === 'success' && <CheckCircle size={14} style={{ color: '#4caf50' }} />}
+                      {item.status === 'failed' && (
+                        <span 
+                          style={{ color: '#f44336', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'help', fontWeight: 'bold' }}
+                          title={item.error || 'Unknown error occurred'}
+                        >
+                          <AlertTriangle size={12} />
+                          Failed
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', flexWrap: 'wrap', gap: '16px' }}>
+          {/* Stats Summary */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-bright)', fontWeight: 'bold' }}>
+              Selected: {selectedItems.length} of {syncItems.length} files 
+              <span style={{ color: 'var(--text-muted)', fontWeight: 'normal' }}>
+                {" "}({moveCount} to Move, {copyCount} to Copy)
+              </span>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              Projected Storage Savings:{" "}
+              <strong style={{ color: spaceSavings >= 0 ? '#4caf50' : '#f44336' }}>
+                {spaceSavings >= 0 ? '-' : '+'}{formatBytes(Math.abs(spaceSavings))} ({savingsPercent}% saved)
+              </strong>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button 
+              type="button" 
+              className="btn btn-secondary" 
+              onClick={onClose}
+              disabled={isSyncing}
+            >
+              Close
+            </button>
+            <button 
+              type="button" 
+              className="btn btn-success" 
+              style={{ background: '#059669', color: '#fff', padding: '8px 18px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}
+              onClick={onExecute}
+              disabled={isSyncing || selectedItems.length === 0 || selectedItems.some(i => !i.transcodedExists)}
+            >
+              {isSyncing ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Syncing Files...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={14} />
+                  Start Sync & Replace
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   );
