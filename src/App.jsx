@@ -1689,8 +1689,8 @@ export default function App() {
                     <th style={{ width: '80px' }}>Quality (RF)</th>
                     <th style={{ width: '95px' }}>Frame Rate</th>
                     <th style={{ width: '90px' }}>Audio Codec</th>
-                    <th style={{ width: '240px', minWidth: '240px' }}>Audio Tracks</th>
-                    <th style={{ width: '240px', minWidth: '240px' }}>Subtitle Tracks</th>
+                    <th className="compact-cell" style={{ width: '250px', minWidth: '250px' }}>Audio Tracks</th>
+                    <th className="compact-cell" style={{ width: '250px', minWidth: '250px' }}>Subtitle Tracks</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1868,7 +1868,7 @@ export default function App() {
                         </td>
 
                         {/* Audio Tracks */}
-                        <td style={{ width: '240px', minWidth: '240px' }}>
+                        <td className="compact-cell" style={{ width: '250px', minWidth: '250px' }}>
                           <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', padding: '4px 0' }}>
                             {Array.from({ length: batchAudioCount }).map((_, aIdx) => {
                               const currentVal = (config.audioSources && config.audioSources[aIdx]) || 
@@ -1895,7 +1895,7 @@ export default function App() {
                         </td>
 
                         {/* Subtitle Tracks */}
-                        <td style={{ width: '240px', minWidth: '240px' }}>
+                        <td className="compact-cell" style={{ width: '250px', minWidth: '250px' }}>
                           <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', padding: '4px 0' }}>
                             {Array.from({ length: batchSubCount }).map((_, sIdx) => {
                               const currentVal = (config.subtitleSources && config.subtitleSources[sIdx]) || 
