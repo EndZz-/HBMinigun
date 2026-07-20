@@ -2157,34 +2157,95 @@ export default function App() {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '4px' }}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold' }}>
-                      <span>Audio Src</span>
-                      <span style={{ color: 'var(--accent)' }}>{batchAudioCount}</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="1" 
-                      max="10" 
-                      value={batchAudioCount} 
-                      onChange={(e) => setBatchAudioCount(parseInt(e.target.value))}
-                      style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer', height: '14px' }}
-                    />
+                {/* Audio Sources */}
+                <div style={{ marginTop: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold', marginBottom: '2px' }}>
+                    <span>Audio Sources</span>
+                    <span style={{ color: 'var(--accent)' }}>{batchAudioCount}</span>
                   </div>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold' }}>
-                      <span>Sub Src</span>
-                      <span style={{ color: '#2ec4b6' }}>{batchSubCount}</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="1" 
-                      max="20" 
-                      value={batchSubCount} 
-                      onChange={(e) => setBatchSubCount(parseInt(e.target.value))}
-                      style={{ width: '100%', accentColor: '#2ec4b6', cursor: 'pointer', height: '14px' }}
-                    />
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={batchAudioCount}
+                    onChange={(e) => setBatchAudioCount(parseInt(e.target.value))}
+                    style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer', height: '14px', marginBottom: '4px' }}
+                  />
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    {Array.from({ length: batchAudioCount }).map((_, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-muted)', minWidth: '18px' }}>A{i + 1}</span>
+                        <select
+                          className="table-select"
+                          style={{ fontSize: '10.5px', padding: '1px 3px', height: '22px', minWidth: '80px' }}
+                          value={batchAudioLangs[i] || 'none'}
+                          onChange={(e) => {
+                            const next = [...batchAudioLangs];
+                            next[i] = e.target.value;
+                            setBatchAudioLangs(next);
+                          }}
+                        >
+                          <option value="none">None</option>
+                          <option value="first">First Track</option>
+                          <option value="eng">English</option>
+                          <option value="spa">Spanish</option>
+                          <option value="fre">French</option>
+                          <option value="ger">German</option>
+                          <option value="jpn">Japanese</option>
+                          <option value="ita">Italian</option>
+                          <option value="chi">Chinese</option>
+                          <option value="kor">Korean</option>
+                          <option value="rus">Russian</option>
+                          <option value="por">Portuguese</option>
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Subtitle Sources */}
+                <div style={{ marginTop: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold', marginBottom: '2px' }}>
+                    <span>Subtitle Sources</span>
+                    <span style={{ color: '#2ec4b6' }}>{batchSubCount}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    value={batchSubCount}
+                    onChange={(e) => setBatchSubCount(parseInt(e.target.value))}
+                    style={{ width: '100%', accentColor: '#2ec4b6', cursor: 'pointer', height: '14px', marginBottom: '4px' }}
+                  />
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    {Array.from({ length: batchSubCount }).map((_, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-muted)', minWidth: '18px' }}>S{i + 1}</span>
+                        <select
+                          className="table-select"
+                          style={{ fontSize: '10.5px', padding: '1px 3px', height: '22px', minWidth: '80px' }}
+                          value={batchSubLangs[i] || 'none'}
+                          onChange={(e) => {
+                            const next = [...batchSubLangs];
+                            next[i] = e.target.value;
+                            setBatchSubLangs(next);
+                          }}
+                        >
+                          <option value="none">None</option>
+                          <option value="first">First Track</option>
+                          <option value="eng">English</option>
+                          <option value="spa">Spanish</option>
+                          <option value="fre">French</option>
+                          <option value="ger">German</option>
+                          <option value="jpn">Japanese</option>
+                          <option value="ita">Italian</option>
+                          <option value="chi">Chinese</option>
+                          <option value="kor">Korean</option>
+                          <option value="rus">Russian</option>
+                          <option value="por">Portuguese</option>
+                        </select>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
