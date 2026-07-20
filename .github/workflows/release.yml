@@ -46,12 +46,21 @@ jobs:
           BLOCKMAP="${EXE}.blockmap"
           LATEST_YML="dist_electron/latest.yml"
 
-          # Create the release
+          # Build release notes from commits since last tag
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${VERSION}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(git log ${PREV_TAG}..HEAD --pretty=format:'- %s' | head -30)
+          else
+            NOTES=$(git log --pretty=format:'- %s' | head -30)
+          fi
+
+          # Create the release with notes
+          BODY=$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$NOTES")
           RELEASE=$(curl -s -X POST \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/releases" \
-            -d "{\"tag_name\":\"${VERSION}\",\"name\":\"${VERSION}\",\"draft\":false,\"prerelease\":false}")
+            -d "{\"tag_name\":\"${VERSION}\",\"name\":\"${VERSION}\",\"body\":${BODY},\"draft\":false,\"prerelease\":false}")
 
           UPLOAD_URL=$(echo "$RELEASE" | python3 -c "import json,sys; print(json.load(sys.stdin)['upload_url'].split('{')[0])")
           echo "Upload URL: $UPLOAD_URL"

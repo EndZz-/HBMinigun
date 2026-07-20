@@ -12,6 +12,7 @@
     </a>
     <img src="https://img.shields.io/badge/platform-Windows-blue?style=for-the-badge&logo=windows" alt="Platform: Windows" />
     <img src="https://img.shields.io/badge/HandBrakeCLI-bundled-ffb703?style=for-the-badge" alt="HandBrakeCLI Bundled" />
+    <img src="https://img.shields.io/badge/FFmpeg-bundled-ff6b35?style=for-the-badge" alt="FFmpeg Bundled" />
   </p>
 </div>
 
@@ -32,16 +33,23 @@
 ### 🎬 Batch Transcoding
 - Scan entire directories and subdirectories for compatible video files
 - Per-file configuration for codec, quality (RF), frame rate, audio tracks, and subtitles
-- Batch-apply settings across all selected files in one click
+- **Batch Apply panel** — apply video codec, quality, frame rate, audio codec, and per-slot audio/subtitle language settings across all selected files in one click
+- Per-slot language dropdowns for audio (up to 10) and subtitles (0–20) — language matching finds the correct track in each file automatically
 - Filter and sort the media library by name, size, codec, Plex compatibility, and transcoded status
 - Auto-selects incompatible files for transcoding on scan
 
 ### ⚙️ Encoding Options
 - **Video:** H.264 or H.265 with configurable RF quality (10–30)
 - **Frame Rate:** Constant or Variable
-- **Audio:** AAC, AC3, EAC3, MP3, or Copy — up to 2 tracks with language matching
-- **Subtitles:** Up to 2 subtitle tracks with language matching
+- **Audio:** AAC, AC3, EAC3, MP3, or Copy — up to 10 tracks with per-slot language matching
+- **Subtitles:** 0–20 subtitle tracks with per-slot language matching
 - **HandBrake Preset Profiles:** Import and use any `.json` HandBrake preset file for full encoder control
+
+### 🔤 Subtitle Conversion Pipeline
+- **Text-based subtitles (ASS, SSA, SRT, WebVTT):** Automatically extracted and converted to clean SRT via FFmpeg before muxing — eliminates styled/positional subtitle issues that cause Plex transcoding
+- **Image-based subtitles (PGS, VOBSUB):** Passed through directly via HandBrake (OCR-free, lossless)
+- If FFmpeg is not found, text subtitles fall back to direct passthrough with a warning in the log
+- Extracted SRT files are written to `C:\TempHBMG\subtitles\` and cleaned up automatically
 
 ### 🔄 Live Queue Management
 - Start a transcode queue and **add more files while it's running** — no need to stop and restart
@@ -104,7 +112,7 @@ Compare your original video against a sample transcode **before committing** to 
 2. Download `HBMiniGun_vX.X.X.exe`
 3. Run the installer — no admin rights required
 
-> **HandBrakeCLI and MediaInfo are bundled inside the app.** You do not need to install them separately.
+> **HandBrakeCLI, MediaInfo, and FFmpeg are all bundled inside the app.** You do not need to install anything separately.
 
 **Install location:** `C:\Users\<you>\AppData\Local\Programs\hbminigun\`
 
@@ -153,6 +161,7 @@ You can change the temp directory path in **Settings**.
 | [Vite](https://vitejs.dev/) | Frontend build tooling |
 | [HandBrakeCLI](https://handbrake.fr/) | Video transcoding engine (bundled) |
 | [MediaInfo](https://mediaarea.net/en/MediaInfo) | Video/audio stream inspection (bundled) |
+| [FFmpeg](https://ffmpeg.org/) | Subtitle extraction and conversion (bundled) |
 | [Lucide React](https://lucide.dev/) | Icon library |
 
 ---
@@ -161,13 +170,18 @@ You can change the temp directory path in **Settings**.
 
 | Version | Highlights |
 |---|---|
+| **v0.9.5** | CI: split build and upload steps — eliminates upload race condition and timeout |
+| **v0.9.x** | FFmpeg bundled (via Git LFS); subtitle ASS/SSA→SRT conversion pipeline |
+| **v0.8.8** | Subtitle extraction pipeline; ffmpeg detection and custom path in Settings |
+| **v0.8.x** | Batch Apply panel redesigned — per-slot audio and subtitle language dropdowns (up to 10 audio, 0–20 subtitle slots) |
+| **v0.5.7** | Fix: UNC engine count off-by-two — stopped double-counting actively-transcoding files in in-flight cap |
+| **v0.5.5** | Fix: UNC pipeline hang after first file — staged file object stored directly instead of looked up in empty queue |
+| **v0.5.4** | Fix: Option 1 / Option 2 routing corrected — UNC staging only affects input path, not output destination |
+| **v0.5.3** | Fix: UNC staging stages one file at a time respecting maxEngines, not all at once |
 | **v0.5.0** | Network-aware UNC/mapped-drive pipeline with local staging and serialized network I/O |
 | **v0.4.1** | Refresh current scan + Scan New Folder while queue is running |
 | **v0.4.0** | Live queue management: add files while transcoding, dynamic engine scaling |
-| **v0.3.9** | HandBrakeCLI & MediaInfo bundled and unpacked correctly on install |
-| **v0.3.6** | Compact UI, sticky table headers, consistent category header sizing |
-| **v0.3.5** | Larger, more readable table dropdowns |
-| **v0.3.3** | Single-release fix (eliminated duplicate GitHub release race condition) |
+| **v0.3.9** | HandBrakeCLI, MediaInfo & FFmpeg bundled and unpacked correctly on install |
 
 ---
 
