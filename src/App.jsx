@@ -1654,7 +1654,7 @@ export default function App() {
                     <th colSpan={4} className="col-divider" style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#00b4d8', textDecoration: 'underline', borderBottom: '2px solid var(--border)' }}>
                       Source Video Info
                     </th>
-                    <th colSpan={5} style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#ffb703', textDecoration: 'underline', borderBottom: '2px solid var(--accent)' }}>
+                    <th colSpan={6} style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#ffb703', textDecoration: 'underline', borderBottom: '2px solid var(--accent)' }}>
                       Transcode Options
                     </th>
                     <th colSpan={3} style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#2ec4b6', textDecoration: 'underline', borderBottom: '2px solid var(--border)' }}>
@@ -1678,7 +1678,8 @@ export default function App() {
                     <th>Quality (RF)</th>
                     <th>Frame Rate</th>
                     <th>Audio Codec</th>
-                    <th style={{ minWidth: '260px' }}>Audio & Subtitle Tracks</th>
+                    <th style={{ minWidth: '150px' }}>Audio Tracks</th>
+                    <th style={{ minWidth: '150px' }}>Subtitle Tracks</th>
                     <th>Plex Playback</th>
                     <th>Est. Size</th>
                     <th>Quality Check</th>
@@ -1807,70 +1808,57 @@ export default function App() {
                           </select>
                         </td>
 
-                        {/* Audio & Subtitle Tracks */}
+                        {/* Audio Tracks */}
                         <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '4px 0' }}>
-                            {/* Audio track mapping section */}
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-                                <span style={{ fontSize: '9px', fontWeight: 'bold', background: 'rgba(0,132,255,0.15)', color: 'var(--accent)', padding: '1px 3px', borderRadius: '3px' }}>AUDIO</span>
-                                <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>({batchAudioCount})</span>
-                              </div>
-                              <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
-                                {Array.from({ length: batchAudioCount }).map((_, aIdx) => {
-                                  const currentVal = (config.audioSources && config.audioSources[aIdx]) || 
-                                                     (aIdx === 0 ? config.audioSource1 : (aIdx === 1 ? config.audioSource2 : 'none')) || 'none';
-                                  return (
-                                    <select
-                                      key={aIdx}
-                                      className="table-select"
-                                      style={{ fontSize: '9px', padding: '1px 3px', height: '20px', minWidth: '60px', maxWidth: '78px', borderRadius: '3px' }}
-                                      value={currentVal}
-                                      onChange={(e) => handleUpdateAudioSource(file.fullPath, aIdx, e.target.value)}
-                                      title={`Audio Track Slot ${aIdx + 1}`}
-                                    >
-                                      <option value="none">S{aIdx + 1}: None</option>
-                                      {file.audioStreams.map((s, idx) => (
-                                        <option key={idx} value={(idx + 1).toString()}>
-                                          S{aIdx + 1}: T{idx + 1} ({s.language || 'unk'})
-                                        </option>
-                                      ))}
-                                    </select>
-                                  );
-                                })}
-                              </div>
-                            </div>
+                          <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', padding: '4px 0' }}>
+                            {Array.from({ length: batchAudioCount }).map((_, aIdx) => {
+                              const currentVal = (config.audioSources && config.audioSources[aIdx]) || 
+                                                 (aIdx === 0 ? config.audioSource1 : (aIdx === 1 ? config.audioSource2 : 'none')) || 'none';
+                              return (
+                                <select
+                                  key={aIdx}
+                                  className="table-select"
+                                  style={{ fontSize: '9px', padding: '1px 3px', height: '20px', minWidth: '60px', maxWidth: '78px', borderRadius: '3px' }}
+                                  value={currentVal}
+                                  onChange={(e) => handleUpdateAudioSource(file.fullPath, aIdx, e.target.value)}
+                                  title={`Audio Track Slot ${aIdx + 1}`}
+                                >
+                                  <option value="none">S{aIdx + 1}: None</option>
+                                  {file.audioStreams.map((s, idx) => (
+                                    <option key={idx} value={(idx + 1).toString()}>
+                                      S{idx + 1}: T{idx + 1} ({s.language || 'unk'})
+                                    </option>
+                                  ))}
+                                </select>
+                              );
+                            })}
+                          </div>
+                        </td>
 
-                            {/* Subtitle track mapping section */}
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-                                <span style={{ fontSize: '9px', fontWeight: 'bold', background: 'rgba(46,196,182,0.15)', color: '#2ec4b6', padding: '1px 3px', borderRadius: '3px' }}>SUBTITLE</span>
-                                <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>({batchSubCount})</span>
-                              </div>
-                              <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
-                                {Array.from({ length: batchSubCount }).map((_, sIdx) => {
-                                  const currentVal = (config.subtitleSources && config.subtitleSources[sIdx]) || 
-                                                     (sIdx === 0 ? config.subtitleSource1 : (sIdx === 1 ? config.subtitleSource2 : 'none')) || 'none';
-                                  return (
-                                    <select
-                                      key={sIdx}
-                                      className="table-select"
-                                      style={{ fontSize: '9px', padding: '1px 3px', height: '20px', minWidth: '60px', maxWidth: '78px', borderRadius: '3px' }}
-                                      value={currentVal}
-                                      onChange={(e) => handleUpdateSubtitleSource(file.fullPath, sIdx, e.target.value)}
-                                      title={`Subtitle Track Slot ${sIdx + 1}`}
-                                    >
-                                      <option value="none">S{sIdx + 1}: None</option>
-                                      {file.subtitleStreams.map((s, idx) => (
-                                        <option key={idx} value={(idx + 1).toString()}>
-                                          S{sIdx + 1}: T{idx + 1} ({s.language || 'unk'})
-                                        </option>
-                                      ))}
-                                    </select>
-                                  );
-                                })}
-                              </div>
-                            </div>
+                        {/* Subtitle Tracks */}
+                        <td>
+                          <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', padding: '4px 0' }}>
+                            {Array.from({ length: batchSubCount }).map((_, sIdx) => {
+                              const currentVal = (config.subtitleSources && config.subtitleSources[sIdx]) || 
+                                                 (sIdx === 0 ? config.subtitleSource1 : (sIdx === 1 ? config.subtitleSource2 : 'none')) || 'none';
+                              return (
+                                <select
+                                  key={sIdx}
+                                  className="table-select"
+                                  style={{ fontSize: '9px', padding: '1px 3px', height: '20px', minWidth: '60px', maxWidth: '78px', borderRadius: '3px' }}
+                                  value={currentVal}
+                                  onChange={(e) => handleUpdateSubtitleSource(file.fullPath, sIdx, e.target.value)}
+                                  title={`Subtitle Track Slot ${sIdx + 1}`}
+                                >
+                                  <option value="none">S{sIdx + 1}: None</option>
+                                  {file.subtitleStreams.map((s, idx) => (
+                                    <option key={idx} value={(idx + 1).toString()}>
+                                      S{idx + 1}: T{idx + 1} ({s.language || 'unk'})
+                                    </option>
+                                  ))}
+                                </select>
+                              );
+                            })}
                           </div>
                         </td>
 
