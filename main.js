@@ -21,8 +21,9 @@ const settingsPath = path.join(settingsDir, 'settings.json');
 const defaultSettings = {
   handbrakePresetPath: '',
   handbrakePresetName: '',
-  handbrakePath: '', // Empty means check PATH or default installer locations
-  mediaInfoPath: '',  // Empty means check PATH or default installer locations
+  handbrakePath: '',   // Empty means check PATH or default installer locations
+  mediaInfoPath: '',   // Empty means check PATH or default installer locations
+  ffmpegPath: '',      // Empty means check PATH or default installer locations
   engines: 2,
   tempDir: 'C:\\TempHBMG'
 };
@@ -154,7 +155,15 @@ function getToolPaths(settings) {
     'C:\\Program Files\\MediaInfo\\MediaInfo.exe'
   ]);
 
-  return { handbrake: hbPath, mediaInfo: miPath };
+  const ffmpegPath = checkTool('ffmpeg', settings.ffmpegPath, [
+    path.join(unpackedBin, 'ffmpeg.exe'),
+    path.join(app.getAppPath(), 'bin', 'ffmpeg.exe'),
+    path.join(app.getAppPath(), 'ffmpeg.exe'),
+    'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
+    'C:\\ffmpeg\\bin\\ffmpeg.exe'
+  ]);
+
+  return { handbrake: hbPath, mediaInfo: miPath, ffmpeg: ffmpegPath };
 }
 
 // IPC Handlers
@@ -172,8 +181,10 @@ ipcMain.handle('check-tools', () => {
   return {
     handbrakeInstalled: !!paths.handbrake,
     mediaInfoInstalled: !!paths.mediaInfo,
+    ffmpegInstalled: !!paths.ffmpeg,
     handbrakePath: paths.handbrake || '',
-    mediaInfoPath: paths.mediaInfo || ''
+    mediaInfoPath: paths.mediaInfo || '',
+    ffmpegPath: paths.ffmpeg || ''
   };
 });
 
@@ -565,6 +576,34 @@ function triggerPrefetch(hbPath, settings) {
       // Try the next queued file
       triggerPrefetch(hbPath, settings);
     });
+}
+
+// Helper: Extract a subtitle stream and convert to SRT using ffmpeg.
+// Returns the output SRT path on success, null on failure.
+// Only works for text-based formats (ASS, SSA, SRT, UTF-8, WebVTT).
+// Image-based formats (PGS, VOBSUB, HDMV_PGS) cannot be converted without OCR.
+function extractSubtitleToSrt(ffmpegPath, inputPath, subIndex, outputSrtPath) {
+  if (!ffmpegPath) return null;
+  try {
+    const { execSync } = require('child_process');
+    fs.mkdirSync(path.dirname(outputSrtPath), { recursive: true });
+    // -map 0:s:<N> selects the Nth subtitle stream (0-indexed)
+    execSync(`"${ffmpegPath}" -i "${inputPath}" -map 0:s:${subIndex} -y "${outputSrtPath}"`, { stdio: 'ignore' });
+    return fs.existsSync(outputSrtPath) ? outputSrtPath : null;
+  } catch (e) {
+    console.error(`Subtitle extraction failed for track ${subIndex}:`, e.message);
+    return null;
+  }
+}
+
+// Returns true if the subtitle format is text-based (convertible to SRT via ffmpeg).
+// Returns false for image-based formats that require OCR.
+function isTextBasedSubtitle(format) {
+  if (!format) return false;
+  const f = format.toUpperCase();
+  return f.includes('ASS') || f.includes('SSA') || f.includes('UTF-8') ||
+         f.includes('SRT') || f.includes('SUBRIP') || f.includes('WEBVTT') ||
+         f.includes('MOV_TEXT') || f.includes('TX3G');
 }
 
 // Suspend process helper
@@ -961,22 +1000,79 @@ async function processNextInQueue(hbPath, settings) {
       }
 
       // Subtitle options
+      // Build list of selected 1-based track numbers
       let selectedSubTracks = [];
       if (fileConfig.subtitleSources && Array.isArray(fileConfig.subtitleSources)) {
         selectedSubTracks = fileConfig.subtitleSources.filter(track => track !== 'none');
       } else {
-        if (fileConfig.subtitleSource1 && fileConfig.subtitleSource1 !== 'none') {
-          selectedSubTracks.push(fileConfig.subtitleSource1);
-        }
-        if (fileConfig.subtitleSource2 && fileConfig.subtitleSource2 !== 'none') {
-          selectedSubTracks.push(fileConfig.subtitleSource2);
-        }
+        if (fileConfig.subtitleSource1 && fileConfig.subtitleSource1 !== 'none') selectedSubTracks.push(fileConfig.subtitleSource1);
+        if (fileConfig.subtitleSource2 && fileConfig.subtitleSource2 !== 'none') selectedSubTracks.push(fileConfig.subtitleSource2);
       }
 
       if (selectedSubTracks.length > 0) {
-        args.push('-s', selectedSubTracks.join(','));
-      } else {
-        args.push('-s', 'none');
+        const ffmpegBin = getToolPaths(settings).ffmpeg;
+        const tempSubDir = path.join(settings.tempDir || 'C:\\TempHBMG', 'subtitles', path.basename(filePath, path.extname(filePath)));
+
+        const passthroughTracks = []; // 1-based track numbers for image-based subs
+        const srtFiles = [];           // paths of extracted SRT files
+        const srtLangs = [];           // language codes matching each SRT file
+        const srtCodesets = [];        // UTF-8 for all
+
+        for (const trackNumStr of selectedSubTracks) {
+          const trackNum = parseInt(trackNumStr, 10); // 1-based
+          const streamIdx = trackNum - 1;             // 0-based for ffmpeg
+          const streamInfo = fffile.subtitleStreams && fffile.subtitleStreams[streamIdx];
+          const format = streamInfo ? streamInfo.format : '';
+          const lang = (streamInfo && streamInfo.language) || 'und';
+
+          if (ffmpegBin && isTextBasedSubtitle(format)) {
+            // Text-based: extract + convert to SRT via ffmpeg
+            const srtPath = path.join(tempSubDir, `track${streamIdx}.srt`);
+            mainWindow.webContents.send('transcode-log', {
+              filePath,
+              text: `[Subtitle] Extracting track ${trackNum} (${format}) → SRT via ffmpeg\n`
+            });
+            const result = extractSubtitleToSrt(ffmpegBin, hbInputPath, streamIdx, srtPath);
+            if (result) {
+              srtFiles.push(result);
+              srtLangs.push(lang);
+              srtCodesets.push('UTF-8');
+            } else {
+              mainWindow.webContents.send('transcode-log', {
+                filePath,
+                text: `[Subtitle] Warning: extraction failed for track ${trackNum}, skipping.\n`
+              });
+            }
+          } else {
+            // Image-based (PGS, VOBSUB) or no ffmpeg: pass through directly via HandBrake
+            if (!ffmpegBin && isTextBasedSubtitle(format)) {
+              mainWindow.webContents.send('transcode-log', {
+                filePath,
+                text: `[Subtitle] ffmpeg not found — passing track ${trackNum} (${format}) directly (may cause Plex issues).\n`
+              });
+            } else {
+              mainWindow.webContents.send('transcode-log', {
+                filePath,
+                text: `[Subtitle] Track ${trackNum} (${format || 'image-based'}) — passing through via HandBrake.\n`
+              });
+            }
+            passthroughTracks.push(trackNumStr);
+          }
+        }
+
+        // Add passthrough image-based tracks via -s
+        if (passthroughTracks.length > 0) {
+          args.push('-s', passthroughTracks.join(','));
+        }
+
+        // Add converted SRT tracks via HandBrake's external SRT flags
+        if (srtFiles.length > 0) {
+          args.push('--srt-file', srtFiles.join(','));
+          args.push('--srt-lang', srtLangs.join(','));
+          args.push('--srt-codeset', srtCodesets.join(','));
+        }
+
+        // Neither passthrough nor SRT — nothing to add (HandBrake omits subs by default)
       }
     }
 

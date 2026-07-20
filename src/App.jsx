@@ -161,14 +161,17 @@ export default function App() {
     handbrakePresetName: '',
     handbrakePath: '',
     mediaInfoPath: '',
+    ffmpegPath: '',
     engines: 2,
     tempDir: 'C:\\TempHBMG'
   });
   const [toolsState, setToolsState] = useState({
     handbrakeInstalled: true,
     mediaInfoInstalled: true,
+    ffmpegInstalled: false,
     handbrakePath: '',
-    mediaInfoPath: ''
+    mediaInfoPath: '',
+    ffmpegPath: ''
   });
   
   // UI Panels / Modals
@@ -2834,6 +2837,24 @@ function SettingsModal({ settings, setSettings, toolsState, onClose, onSave, sho
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   Path: {toolsState.mediaInfoPath || 'Not found'}
                 </div>
+
+                <hr style={{ borderColor: 'var(--border)', margin: '4px 0' }} />
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12.5px' }}>
+                  <span>FFmpeg:</span>
+                  {toolsState.ffmpegInstalled ? (
+                    <span style={{ color: 'var(--plex-green-text)', fontWeight: '600' }} className="flex-row">
+                      <CheckCircle size={14} /> Available
+                    </span>
+                  ) : (
+                    <span style={{ color: '#fbbf24', fontWeight: '600' }} className="flex-row">
+                      <AlertTriangle size={14} /> Not Found (subtitle conversion disabled)
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Path: {toolsState.ffmpegPath || 'Not found'}
+                </div>
               </div>
             </div>
 
@@ -2863,6 +2884,20 @@ function SettingsModal({ settings, setSettings, toolsState, onClose, onSave, sho
               />
               <span className="text-muted" style={{ fontSize: '10.5px', marginTop: '4px', display: 'block' }}>
                 Leave empty to look in standard paths and system PATH.
+              </span>
+            </div>
+
+            <div className="form-group">
+              <label>Custom FFmpeg Path (Optional)</label>
+              <input
+                type="text"
+                className="text-input"
+                placeholder="e.g. C:\ffmpeg\bin\ffmpeg.exe"
+                value={localSettings.ffmpegPath || ''}
+                onChange={(e) => setLocalSettings(prev => ({ ...prev, ffmpegPath: e.target.value }))}
+              />
+              <span className="text-muted" style={{ fontSize: '10.5px', marginTop: '4px', display: 'block' }}>
+                Used for ASS/SSA → SRT subtitle conversion. Leave empty to search standard paths and system PATH.
               </span>
             </div>
 
