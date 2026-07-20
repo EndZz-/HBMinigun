@@ -1654,11 +1654,11 @@ export default function App() {
                     <th colSpan={4} className="col-divider" style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#00b4d8', textDecoration: 'underline', borderBottom: '2px solid var(--border)' }}>
                       Source Video Info
                     </th>
+                    <th colSpan={3} className="col-divider" style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#2ec4b6', textDecoration: 'underline', borderBottom: '2px solid var(--border)' }}>
+                      Playback & Check
+                    </th>
                     <th colSpan={6} style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#ffb703', textDecoration: 'underline', borderBottom: '2px solid var(--accent)' }}>
                       Transcode Options
-                    </th>
-                    <th colSpan={3} style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#2ec4b6', textDecoration: 'underline', borderBottom: '2px solid var(--border)' }}>
-                      Playback & Check
                     </th>
                   </tr>
                   {/* Detail Columns Row */}
@@ -1674,15 +1674,19 @@ export default function App() {
                     <th>Name</th>
                     <th style={{ minWidth: '220px' }}>Original Streams</th>
                     <th className="col-divider">Size / Ext</th>
+                    
+                    {/* Playback & Check Columns */}
+                    <th>Plex Playback</th>
+                    <th>Est. Size</th>
+                    <th className="col-divider">Quality Check</th>
+
+                    {/* Transcode Options Columns */}
                     <th>Video Codec</th>
                     <th>Quality (RF)</th>
                     <th>Frame Rate</th>
                     <th>Audio Codec</th>
                     <th style={{ minWidth: '150px' }}>Audio Tracks</th>
                     <th style={{ minWidth: '150px' }}>Subtitle Tracks</th>
-                    <th>Plex Playback</th>
-                    <th>Est. Size</th>
-                    <th>Quality Check</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1755,6 +1759,55 @@ export default function App() {
                           </div>
                         </td>
                         
+                        {/* Plex Playback status info */}
+                        <td>
+                          {file.isPlexOk ? (
+                            <span className="plex-status-indicator ok" style={{ padding: '2px 4px', fontSize: '10.5px' }}>
+                              <CheckCircle size={10} />
+                              Optimal
+                            </span>
+                          ) : (
+                            <span 
+                              className="plex-status-indicator not-ok"
+                              onClick={() => openDetails(file)}
+                              title="Click to view Plex issues"
+                              style={{ padding: '2px 4px', fontSize: '10.5px' }}
+                            >
+                              <AlertTriangle size={10} />
+                              Incompatible
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Estimated Size */}
+                        <td>
+                          {(() => {
+                            const estSize = estimateTranscodedSize(file, config);
+                            const percent = Math.round((estSize / file.sizeBytes) * 100);
+                            const diffPercent = percent - 100;
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <strong style={{ color: 'var(--accent)', fontSize: '11px' }}>{formatBytes(estSize)}</strong>
+                                <span style={{ color: diffPercent < 0 ? '#4caf50' : '#f44336', fontSize: '10.5px', fontWeight: 'bold' }}>
+                                  {diffPercent < 0 ? `${diffPercent}%` : `+${diffPercent}%`}
+                                </span>
+                              </div>
+                            );
+                          })()}
+                        </td>
+
+                        {/* Sample Preview button with Divider */}
+                        <td className="col-divider">
+                          <button 
+                            type="button"
+                            className="btn btn-outline-blue btn-xs" 
+                            style={{ padding: '4px 8px', fontSize: '10.5px', height: '24px', background: 'rgba(0, 132, 255, 0.1)', border: '1px solid rgba(0, 132, 255, 0.3)', color: 'var(--accent)' }}
+                            onClick={() => openSampleModal(file, config)}
+                          >
+                            Sample
+                          </button>
+                        </td>
+
                         {/* Video Codec Selector */}
                         <td>
                           <select 
@@ -1860,55 +1913,6 @@ export default function App() {
                               );
                             })}
                           </div>
-                        </td>
-
-                        {/* Plex Playback status info */}
-                        <td>
-                          {file.isPlexOk ? (
-                            <span className="plex-status-indicator ok" style={{ padding: '2px 4px', fontSize: '10.5px' }}>
-                              <CheckCircle size={10} />
-                              Optimal
-                            </span>
-                          ) : (
-                            <span 
-                              className="plex-status-indicator not-ok"
-                              onClick={() => openDetails(file)}
-                              title="Click to view Plex issues"
-                              style={{ padding: '2px 4px', fontSize: '10.5px' }}
-                            >
-                              <AlertTriangle size={10} />
-                              Incompatible
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Estimated Size */}
-                        <td>
-                          {(() => {
-                            const estSize = estimateTranscodedSize(file, config);
-                            const percent = Math.round((estSize / file.sizeBytes) * 100);
-                            const diffPercent = percent - 100;
-                            return (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                <strong style={{ color: 'var(--accent)', fontSize: '11px' }}>{formatBytes(estSize)}</strong>
-                                <span style={{ color: diffPercent < 0 ? '#4caf50' : '#f44336', fontSize: '10.5px', fontWeight: 'bold' }}>
-                                  {diffPercent < 0 ? `${diffPercent}%` : `+${diffPercent}%`}
-                                </span>
-                              </div>
-                            );
-                          })()}
-                        </td>
-
-                        {/* Sample Preview button */}
-                        <td>
-                          <button 
-                            type="button"
-                            className="btn btn-outline-blue btn-xs" 
-                            style={{ padding: '4px 8px', fontSize: '10.5px', height: '24px', background: 'rgba(0, 132, 255, 0.1)', border: '1px solid rgba(0, 132, 255, 0.3)', color: 'var(--accent)' }}
-                            onClick={() => openSampleModal(file, config)}
-                          >
-                            Sample
-                          </button>
                         </td>
                       </tr>
                     );
