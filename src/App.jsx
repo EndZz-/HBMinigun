@@ -1685,8 +1685,8 @@ export default function App() {
                     <th style={{ width: '80px' }}>Quality (RF)</th>
                     <th style={{ width: '95px' }}>Frame Rate</th>
                     <th style={{ width: '90px' }}>Audio Codec</th>
-                    <th style={{ width: '180px', minWidth: '150px' }}>Audio Tracks</th>
-                    <th style={{ width: '180px', minWidth: '150px' }}>Subtitle Tracks</th>
+                    <th style={{ width: '240px', minWidth: '240px' }}>Audio Tracks</th>
+                    <th style={{ width: '240px', minWidth: '240px' }}>Subtitle Tracks</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1864,7 +1864,7 @@ export default function App() {
                         </td>
 
                         {/* Audio Tracks */}
-                        <td>
+                        <td style={{ width: '240px', minWidth: '240px' }}>
                           <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', padding: '4px 0' }}>
                             {Array.from({ length: batchAudioCount }).map((_, aIdx) => {
                               const currentVal = (config.audioSources && config.audioSources[aIdx]) || 
@@ -1891,7 +1891,7 @@ export default function App() {
                         </td>
 
                         {/* Subtitle Tracks */}
-                        <td>
+                        <td style={{ width: '240px', minWidth: '240px' }}>
                           <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', padding: '4px 0' }}>
                             {Array.from({ length: batchSubCount }).map((_, sIdx) => {
                               const currentVal = (config.subtitleSources && config.subtitleSources[sIdx]) || 
