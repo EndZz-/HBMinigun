@@ -1350,35 +1350,54 @@ export default function App() {
   };
 
   const estimateTranscodedSize = (file, config) => {
-    const originalSize = file.sizeBytes;
     const rf = config.quality || 20;
     const codec = config.videoCodec || 'h264';
     
-    // Base ratio model: h265 is more efficient
-    const isH265 = codec === 'h265';
-    const refRF = isH265 ? 24 : 22;
-    const baseRatio = isH265 ? 0.30 : 0.43;
-    
-    // Logarithmic scaling based on RF (each change of 6 RF steps doubles/halves size)
-    const rfDiff = refRF - rf;
-    let ratio = baseRatio * Math.pow(2, rfDiff / 6);
-    
-    // Audio factor: AAC is typically very small. Copy keeps original audio size.
-    let audioFactor = 1.0;
-    if (config.audioCodec === 'AAC') {
-      audioFactor = 0.85; // AAC transcode savings
-    } else if (config.audioCodec === 'Copy') {
-      audioFactor = 1.05; // Keep original audio
-    } else {
-      audioFactor = 0.95; // AC3/EAC3
+    // 1. Determine duration T (in seconds)
+    let T = file.duration;
+    if (!T || isNaN(T)) {
+      // Estimate duration assuming the original file has a bitrate of ~8000 kbps
+      T = (file.sizeBytes * 8) / (8000 * 1000);
     }
     
-    ratio *= audioFactor;
+    // 2. Determine base video and audio bitrates based on resolution height
+    let baseBv = 8000; // default 1080p
+    let baseBa = 192;
     
-    // Clamp ratio between 0.05 (5%) and 1.5 (150%) of original size
-    ratio = Math.max(0.05, Math.min(1.5, ratio));
+    const height = file.height || 1080;
+    if (height >= 2160) {
+      baseBv = 45000;
+      baseBa = 256;
+    } else if (height <= 720) {
+      baseBv = 4000;
+      baseBa = 128;
+    }
     
-    return originalSize * ratio;
+    // 3. Adjust video bitrate based on RF quality (every 6 steps halves/doubles)
+    const rfDiff = 22 - rf; // 22 is reference RF for baseBv
+    let targetBv = baseBv * Math.pow(2, rfDiff / 6);
+    
+    // 4. Adjust video bitrate based on codec efficiency (H.265 is ~40% more efficient)
+    if (codec === 'h265') {
+      targetBv *= 0.6;
+    }
+    
+    // 5. Adjust audio bitrate based on codec choice
+    let targetBa = baseBa;
+    if (config.audioCodec === 'MP3') {
+      targetBa = 128;
+    } else if (config.audioCodec === 'AC3' || config.audioCodec === 'EAC3') {
+      targetBa = 384;
+    }
+    
+    // 6. Apply formula: S = ((B_v + B_a) * T) / (8 * 1024) (S in MB)
+    const S = ((targetBv + targetBa) * T) / (8 * 1024);
+    
+    // Convert Megabytes (MB) back to bytes
+    const estimatedSizeBytes = S * 1024 * 1024;
+    
+    // Clamp estimated size between 5% and 150% of the original size to prevent outliers
+    return Math.max(file.sizeBytes * 0.05, Math.min(file.sizeBytes * 1.5, estimatedSizeBytes));
   };
 
   // Modal actions

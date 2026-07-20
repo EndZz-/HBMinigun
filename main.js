@@ -333,6 +333,12 @@ function parseMediaInfo(file, data) {
     } else if (track['@type'] === 'Video') {
       result.videoCodec = track.Format || 'Unknown';
       result.videoFormat = track.Format_Commercial || track.Format || '';
+      if (track.Height) {
+        result.height = parseInt(track.Height, 10);
+      }
+      if (track.Width) {
+        result.width = parseInt(track.Width, 10);
+      }
       if (track.Duration && !result.duration) {
         const dur = parseFloat(track.Duration);
         if (!isNaN(dur)) {
