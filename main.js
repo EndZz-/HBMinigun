@@ -64,6 +64,41 @@ function fileExists(filePath) {
   }
 }
 
+// Robust file copy/move helper with safety guarantees
+function copyOrMoveFileSafe(src, dest, mode, originalToReplace = null) {
+  try {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+  } catch (e) {}
+
+  if (mode === 'move') {
+    try {
+      if (fs.existsSync(dest) && src !== dest) {
+        fs.unlinkSync(dest);
+      }
+      fs.renameSync(src, dest);
+    } catch (err) {
+      if (err.code === 'EXDEV' || err.code === 'EPERM' || err.code === 'EACCES') {
+        fs.copyFileSync(src, dest);
+        fs.unlinkSync(src);
+      } else {
+        throw err;
+      }
+    }
+  } else {
+    fs.copyFileSync(src, dest);
+  }
+
+  if (originalToReplace && originalToReplace !== dest) {
+    try {
+      if (fs.existsSync(originalToReplace)) {
+        fs.unlinkSync(originalToReplace);
+      }
+    } catch (e) {
+      console.error(`Failed to clean up replaced original file ${originalToReplace}:`, e);
+    }
+  }
+}
+
 // Check executable path
 function checkTool(name, configuredPath, defaultPaths) {
   // 1. Check custom path if configured
@@ -1027,33 +1062,24 @@ async function processNextInQueue(hbPath, settings) {
             // Apply post-action (Copy/Move back to source) if configured.
             if (currentConfig.postAction === 'move') {
               const origReplace = path.join(path.dirname(filePath), outputFileName);
-              mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Deleting original: ${filePath}\n` });
-              if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-              mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Moving: ${tempOutPath} -> ${origReplace}\n` });
-              fs.renameSync(tempOutPath, origReplace);
+              mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Replacing original via Move: ${origReplace}\n` });
+              copyOrMoveFileSafe(tempOutPath, origReplace, 'move', filePath);
               finalOutPath = origReplace;
             } else if (currentConfig.postAction === 'copy') {
               const origReplace = path.join(path.dirname(filePath), outputFileName);
-              mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Copying to: ${origReplace}\n` });
-              fs.copyFileSync(tempOutPath, origReplace);
+              mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Replacing original via Copy: ${origReplace}\n` });
+              copyOrMoveFileSafe(tempOutPath, origReplace, 'copy', filePath);
               finalOutPath = origReplace;
             }
           } else {
             // Option #2: Replace Source Files (Temp Directory).
             // Move or copy the local transcode to the original file's location.
-            // This behavior is exactly the same whether the source was local or UNC.
             if (currentConfig.replaceAction === 'move') {
-              if (fs.existsSync(filePath)) {
-                mainWindow.webContents.send('transcode-log', { filePath, text: `Deleting original: ${filePath}\n` });
-                fs.unlinkSync(filePath);
-              }
-              mainWindow.webContents.send('transcode-log', { filePath, text: `Moving to: ${finalOutPath}\n` });
-              try { fs.mkdirSync(path.dirname(finalOutPath), { recursive: true }); } catch(e) {}
-              fs.renameSync(tempOutPath, finalOutPath);
+              mainWindow.webContents.send('transcode-log', { filePath, text: `Replacing original via Move: ${finalOutPath}\n` });
+              copyOrMoveFileSafe(tempOutPath, finalOutPath, 'move', filePath);
             } else {
-              mainWindow.webContents.send('transcode-log', { filePath, text: `Copying to: ${finalOutPath}\n` });
-              try { fs.mkdirSync(path.dirname(finalOutPath), { recursive: true }); } catch(e) {}
-              fs.copyFileSync(tempOutPath, finalOutPath);
+              mainWindow.webContents.send('transcode-log', { filePath, text: `Replacing original via Copy: ${finalOutPath}\n` });
+              copyOrMoveFileSafe(tempOutPath, finalOutPath, 'copy', filePath);
             }
           }
         } catch (err) {
@@ -1163,17 +1189,7 @@ ipcMain.handle('move-copy-files', async (event, items, config = {}) => {
     }
 
     try {
-      if (mode === 'move') {
-        // Delete original
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
-        // Move transcoded file
-        fs.renameSync(transcodedFileLocation, originalReplacePath);
-      } else {
-        // Copy transcoded file
-        fs.copyFileSync(transcodedFileLocation, originalReplacePath);
-      }
+      copyOrMoveFileSafe(transcodedFileLocation, originalReplacePath, mode, filePath);
       results.push({ filePath, success: true });
     } catch (err) {
       results.push({ filePath, success: false, error: err.message });
