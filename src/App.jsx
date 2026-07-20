@@ -2044,63 +2044,11 @@ export default function App() {
                 )}
               </div>
 
-              {/* Column 2: Preset Profile & Auto-Scan */}
-              <div className="settings-col" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)', paddingLeft: '12px' }}>
-                <div className="section-title">
-                  <Clock size={13} style={{ color: '#2ec4b6' }} />
-                  <span>Preset & Auto-Scan</span>
-                </div>
-
-                <div className="form-group">
-                  <label style={{ fontSize: '10.5px', marginBottom: '2px' }}>Active Preset Profile</label>
-                  <div className="relative-dir-box" title={settings.handbrakePresetPath} style={{ padding: '4px 8px', fontSize: '11px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {settings.handbrakePresetName ? settings.handbrakePresetName : 'Manual / Fallback'}
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label style={{ fontSize: '10.5px', marginBottom: '3px' }}>Periodic Rescan (Minutes)</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input 
-                      type="number" 
-                      min="0" 
-                      className="text-input" 
-                      placeholder="0 to disable"
-                      value={autoRescanInterval}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value);
-                        setAutoRescanInterval(isNaN(val) ? 0 : val);
-                      }}
-                      disabled={isTranscoding && autoRescanInterval > 0}
-                      style={{ width: '80px', padding: '3px 8px', fontSize: '11px', height: '26px' }}
-                    />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <input 
-                        type="checkbox" 
-                        id="autoAddToQueue" 
-                        className="custom-checkbox"
-                        checked={autoAddToQueue}
-                        onChange={(e) => setAutoAddToQueue(e.target.checked)}
-                      />
-                      <label htmlFor="autoAddToQueue" style={{ fontSize: '10.5px', color: 'var(--text-bright)', cursor: 'pointer', margin: 0 }}>
-                        Auto-queue
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                {autoRescanInterval > 0 && scanDir && (
-                  <div style={{ fontSize: '11px', color: 'var(--accent)', marginTop: '2px' }}>
-                    Next scan in: <strong>{timeUntilNextScan}s</strong>
-                  </div>
-                )}
-              </div>
-
-              {/* Column 3: Batch Apply Settings */}
+              {/* Column 2: Batch Apply Settings & Preset */}
               <div className="settings-col" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)', paddingLeft: '12px' }}>
                 <div className="section-title">
                   <Sliders size={13} style={{ color: '#ffb703' }} />
-                  <span>Batch Apply Settings</span>
+                  <span>Batch Apply & Preset Settings</span>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
@@ -2189,6 +2137,13 @@ export default function App() {
                   </div>
                 </div>
 
+                <div className="form-group" style={{ marginBottom: '4px' }}>
+                  <label style={{ fontSize: '10.5px', marginBottom: '2px', display: 'block' }}>Active Preset Profile</label>
+                  <div className="relative-dir-box" title={settings.handbrakePresetPath} style={{ padding: '4px 8px', fontSize: '11px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {settings.handbrakePresetName ? settings.handbrakePresetName : 'Manual / Fallback'}
+                  </div>
+                </div>
+
                 <button 
                   type="button"
                   className="btn btn-outline-blue btn-xs"
@@ -2200,11 +2155,11 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Column 4: Job Concurrency & Actions */}
+              {/* Column 3: Transcode Engines & Actions */}
               <div className="settings-col" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)', paddingLeft: '12px' }}>
                 <div className="section-title">
                   <Play size={13} style={{ color: '#4caf50' }} />
-                  <span>Job Concurrency & Actions</span>
+                  <span>Transcode Engines & Actions</span>
                 </div>
 
                 <div className="form-group" style={{ marginBottom: '6px' }}>
@@ -2229,7 +2184,43 @@ export default function App() {
                   />
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+                <div className="form-group" style={{ marginBottom: '6px' }}>
+                  <label style={{ fontSize: '10.5px', marginBottom: '3px', display: 'block' }}>Periodic Rescan (Minutes)</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      className="text-input" 
+                      placeholder="0 to disable"
+                      value={autoRescanInterval}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setAutoRescanInterval(isNaN(val) ? 0 : val);
+                      }}
+                      disabled={isTranscoding && autoRescanInterval > 0}
+                      style={{ width: '70px', padding: '3px 8px', fontSize: '11px', height: '26px' }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <input 
+                        type="checkbox" 
+                        id="autoAddToQueue" 
+                        className="custom-checkbox"
+                        checked={autoAddToQueue}
+                        onChange={(e) => setAutoAddToQueue(e.target.checked)}
+                      />
+                      <label htmlFor="autoAddToQueue" style={{ fontSize: '10.5px', color: 'var(--text-bright)', cursor: 'pointer', margin: 0 }}>
+                        Auto-queue
+                      </label>
+                    </div>
+                  </div>
+                  {autoRescanInterval > 0 && scanDir && (
+                    <div style={{ fontSize: '10.5px', color: 'var(--accent)', marginTop: '4px' }}>
+                      Next scan in: <strong>{timeUntilNextScan}s</strong>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: 'auto' }}>
                   {isTranscoding ? (
                     <>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
