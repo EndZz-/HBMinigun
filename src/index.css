@@ -364,7 +364,8 @@ body {
 }
 
 .file-name-cell {
-  max-width: 240px;
+  max-width: 0;
+  width: 100%;
 }
 
 .file-title {

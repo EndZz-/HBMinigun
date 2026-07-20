@@ -1651,7 +1651,7 @@ export default function App() {
             </div>
           ) : (
             <div className="table-wrapper" style={{ overflowX: 'auto' }}>
-              <table className="files-table" style={{ width: 'max-content' }}>
+              <table className="files-table" style={{ width: '100%' }}>
                 <thead>
                   {/* Grouped Header Categories Row */}
                   <tr style={{ background: 'var(--bg-dark)' }}>
@@ -1675,7 +1675,7 @@ export default function App() {
                         onChange={handleSelectAll}
                       />
                     </th>
-                    <th style={{ width: '320px', minWidth: '320px' }}>Name</th>
+                    <th style={{ width: '100%', minWidth: '220px' }}>Name</th>
                     <th style={{ width: '180px', minWidth: '180px' }}>Original Streams</th>
                     <th className="col-divider compact-cell" style={{ width: '85px', textAlign: 'center' }}>Size / Ext</th>
                     
@@ -1719,9 +1719,9 @@ export default function App() {
                             onChange={() => handleToggleSelect(file.fullPath)}
                           />
                         </td>
-                        <td className="file-name-cell" style={{ width: '320px', minWidth: '320px' }}>
-                          <div className="file-title" title={file.name} style={{ maxWidth: '320px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
-                          <div className="file-path" title={file.fullPath} style={{ maxWidth: '320px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.relativePath}</div>
+                        <td className="file-name-cell" style={{ minWidth: '220px' }}>
+                          <div className="file-title" title={file.name}>{file.name}</div>
+                          <div className="file-path" title={file.fullPath}>{file.relativePath}</div>
                         </td>
                         
                         {/* Expanded Original Streams details cell */}
