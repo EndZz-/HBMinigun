@@ -298,7 +298,7 @@ export default function App() {
   
   // Track counts sliders states
   const [batchAudioCount, setBatchAudioCount] = useState(2);
-  const [batchSubCount, setBatchSubCount] = useState(2);
+  const [batchSubCount, setBatchSubCount] = useState(0);
 
   // Dynamic language settings array
   const [batchAudioLangs, setBatchAudioLangs] = useState(['eng', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none']);
@@ -2214,7 +2214,7 @@ export default function App() {
                   </div>
                   <input
                     type="range"
-                    min="1"
+                    min="0"
                     max="20"
                     value={batchSubCount}
                     onChange={(e) => setBatchSubCount(parseInt(e.target.value))}
