@@ -33,7 +33,53 @@ jobs:
       - name: Build vite project
         run: npm run build
 
-      - name: Build & Publish Electron Release
+      - name: Build Electron app
+        run: npx electron-builder build --win --x64 --publish never
+
+      - name: Upload installer to GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder build --win --x64 --publish always
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          EXE=$(ls dist_electron/HBMiniGun_v*.exe | grep -v blockmap | head -1)
+          BLOCKMAP="${EXE}.blockmap"
+          LATEST_YML="dist_electron/latest.yml"
+
+          # Create the release
+          RELEASE=$(curl -s -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases" \
+            -d "{\"tag_name\":\"${VERSION}\",\"name\":\"${VERSION}\",\"draft\":false,\"prerelease\":false}")
+
+          UPLOAD_URL=$(echo "$RELEASE" | python3 -c "import json,sys; print(json.load(sys.stdin)['upload_url'].split('{')[0])")
+          echo "Upload URL: $UPLOAD_URL"
+
+          # Upload installer exe
+          echo "Uploading $EXE..."
+          curl -s -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            "${UPLOAD_URL}?name=$(basename $EXE)" \
+            --data-binary @"$EXE"
+
+          # Upload blockmap
+          echo "Uploading blockmap..."
+          curl -s -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            "${UPLOAD_URL}?name=$(basename $BLOCKMAP)" \
+            --data-binary @"$BLOCKMAP"
+
+          # Upload latest.yml (for auto-updater)
+          if [ -f "$LATEST_YML" ]; then
+            echo "Uploading latest.yml..."
+            curl -s -X POST \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Content-Type: text/yaml" \
+              "${UPLOAD_URL}?name=latest.yml" \
+              --data-binary @"$LATEST_YML"
+          fi
+
+          echo "Done."
