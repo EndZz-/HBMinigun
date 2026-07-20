@@ -1671,14 +1671,14 @@ export default function App() {
                         onChange={handleSelectAll}
                       />
                     </th>
-                    <th>Name</th>
-                    <th style={{ minWidth: '220px' }}>Original Streams</th>
-                    <th className="col-divider">Size / Ext</th>
+                    <th style={{ width: '22%' }}>Name</th>
+                    <th style={{ minWidth: '220px', width: '30%' }}>Original Streams</th>
+                    <th className="col-divider compact-cell" style={{ width: '85px', textAlign: 'center' }}>Size / Ext</th>
                     
                     {/* Playback & Check Columns */}
-                    <th>Plex Playback</th>
-                    <th>Est. Size</th>
-                    <th className="col-divider">Quality Check</th>
+                    <th className="compact-cell" style={{ width: '105px', textAlign: 'center' }}>Plex Playback</th>
+                    <th className="compact-cell" style={{ width: '85px', textAlign: 'center' }}>Est. Size</th>
+                    <th className="col-divider compact-cell" style={{ width: '85px', textAlign: 'center' }}>Quality Check</th>
 
                     {/* Transcode Options Columns */}
                     <th>Video Codec</th>
@@ -1752,41 +1752,43 @@ export default function App() {
                         </td>
 
                         {/* File Size & Extension with Divider */}
-                        <td className="col-divider">
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <td className="col-divider compact-cell" style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
                             <strong style={{ color: 'var(--text-bright)' }}>{formatBytes(file.sizeBytes)}</strong>
                             <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '10px' }}>{file.extension.toUpperCase()}</span>
                           </div>
                         </td>
                         
                         {/* Plex Playback status info */}
-                        <td>
-                          {file.isPlexOk ? (
-                            <span className="plex-status-indicator ok" style={{ padding: '2px 4px', fontSize: '10.5px' }}>
-                              <CheckCircle size={10} />
-                              Optimal
-                            </span>
-                          ) : (
-                            <span 
-                              className="plex-status-indicator not-ok"
-                              onClick={() => openDetails(file)}
-                              title="Click to view Plex issues"
-                              style={{ padding: '2px 4px', fontSize: '10.5px' }}
-                            >
-                              <AlertTriangle size={10} />
-                              Incompatible
-                            </span>
-                          )}
+                        <td className="compact-cell" style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'inline-flex', justifyContent: 'center' }}>
+                            {file.isPlexOk ? (
+                              <span className="plex-status-indicator ok" style={{ padding: '2px 4px', fontSize: '10.5px' }}>
+                                <CheckCircle size={10} />
+                                Optimal
+                              </span>
+                            ) : (
+                              <span 
+                                className="plex-status-indicator not-ok"
+                                onClick={() => openDetails(file)}
+                                title="Click to view Plex issues"
+                                style={{ padding: '2px 4px', fontSize: '10.5px' }}
+                              >
+                                <AlertTriangle size={10} />
+                                Incompatible
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Estimated Size */}
-                        <td>
+                        <td className="compact-cell" style={{ textAlign: 'center' }}>
                           {(() => {
                             const estSize = estimateTranscodedSize(file, config);
                             const percent = Math.round((estSize / file.sizeBytes) * 100);
                             const diffPercent = percent - 100;
                             return (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
                                 <strong style={{ color: 'var(--accent)', fontSize: '11px' }}>{formatBytes(estSize)}</strong>
                                 <span style={{ color: diffPercent < 0 ? '#4caf50' : '#f44336', fontSize: '10.5px', fontWeight: 'bold' }}>
                                   {diffPercent < 0 ? `${diffPercent}%` : `+${diffPercent}%`}
@@ -1797,7 +1799,7 @@ export default function App() {
                         </td>
 
                         {/* Sample Preview button with Divider */}
-                        <td className="col-divider">
+                        <td className="col-divider compact-cell" style={{ textAlign: 'center' }}>
                           <button 
                             type="button"
                             className="btn btn-outline-blue btn-xs" 

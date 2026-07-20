@@ -299,6 +299,12 @@ body {
   vertical-align: middle;
 }
 
+.files-table td.compact-cell,
+.files-table th.compact-cell {
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+}
+
 .files-table tr {
   transition: background-color 0.15s ease;
 }
