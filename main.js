@@ -977,8 +977,11 @@ async function processNextInQueue(hbPath, settings) {
     });
 
     hbProc.stderr.on('data', (data) => {
+      const text = data.toString();
+      const isActualError = text.toLowerCase().includes('error') && !text.toLowerCase().includes('compile-time') && !text.toLowerCase().includes('nvencode');
       mainWindow.webContents.send('transcode-log', {
-        filePath: filePath, text: `[Error] ${data.toString()}`
+        filePath: filePath,
+        text: isActualError ? `[Error] ${text}` : text
       });
     });
 
