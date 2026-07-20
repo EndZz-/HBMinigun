@@ -931,19 +931,21 @@ async function processNextInQueue(hbPath, settings) {
       }
 
       // Audio options
-      const selectedAudioTracks = [];
-      const audioEncoders = [];
+      let selectedAudioTracks = [];
+      if (fileConfig.audioSources && Array.isArray(fileConfig.audioSources)) {
+        selectedAudioTracks = fileConfig.audioSources.filter(track => track !== 'none');
+      } else {
+        if (fileConfig.audioSource1 && fileConfig.audioSource1 !== 'none') {
+          selectedAudioTracks.push(fileConfig.audioSource1);
+        }
+        if (fileConfig.audioSource2 && fileConfig.audioSource2 !== 'none') {
+          selectedAudioTracks.push(fileConfig.audioSource2);
+        }
+      }
+
       const encMap = { 'AAC': 'av_aac', 'AC3': 'ac3', 'EAC3': 'eac3', 'MP3': 'mp3', 'Copy': 'copy' };
       const encoderName = encMap[fileConfig.audioCodec] || 'av_aac';
-
-      if (fileConfig.audioSource1 !== 'none') {
-        selectedAudioTracks.push(fileConfig.audioSource1);
-        audioEncoders.push(encoderName);
-      }
-      if (fileConfig.audioSource2 !== 'none') {
-        selectedAudioTracks.push(fileConfig.audioSource2);
-        audioEncoders.push(encoderName);
-      }
+      const audioEncoders = selectedAudioTracks.map(() => encoderName);
 
       if (selectedAudioTracks.length > 0) {
         args.push('-a', selectedAudioTracks.join(','));
@@ -953,12 +955,16 @@ async function processNextInQueue(hbPath, settings) {
       }
 
       // Subtitle options
-      const selectedSubTracks = [];
-      if (fileConfig.subtitleSource1 !== 'none') {
-        selectedSubTracks.push(fileConfig.subtitleSource1);
-      }
-      if (fileConfig.subtitleSource2 !== 'none') {
-        selectedSubTracks.push(fileConfig.subtitleSource2);
+      let selectedSubTracks = [];
+      if (fileConfig.subtitleSources && Array.isArray(fileConfig.subtitleSources)) {
+        selectedSubTracks = fileConfig.subtitleSources.filter(track => track !== 'none');
+      } else {
+        if (fileConfig.subtitleSource1 && fileConfig.subtitleSource1 !== 'none') {
+          selectedSubTracks.push(fileConfig.subtitleSource1);
+        }
+        if (fileConfig.subtitleSource2 && fileConfig.subtitleSource2 !== 'none') {
+          selectedSubTracks.push(fileConfig.subtitleSource2);
+        }
       }
 
       if (selectedSubTracks.length > 0) {

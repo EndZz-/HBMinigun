@@ -289,10 +289,58 @@ export default function App() {
   const [batchQuality, setBatchQuality] = useState(20);
   const [batchFramerate, setBatchFramerate] = useState('constant');
   const [batchAudioCodec, setBatchAudioCodec] = useState('AAC');
+  
+  // Track counts sliders states
+  const [batchAudioCount, setBatchAudioCount] = useState(2);
+  const [batchSubCount, setBatchSubCount] = useState(2);
+
+  // Dynamic language settings array
+  const [batchAudioLangs, setBatchAudioLangs] = useState(['eng', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none']);
+  const [batchSubLangs, setBatchSubLangs] = useState(['none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none']);
+
+  // Legacy single properties for fallback
   const [batchAudioLang, setBatchAudioLang] = useState('eng');
   const [batchAudioLang2, setBatchAudioLang2] = useState('none');
   const [batchSubLang, setBatchSubLang] = useState('none');
   const [batchSubLang2, setBatchSubLang2] = useState('none');
+
+  const handleUpdateAudioSource = (filePath, index, value) => {
+    setFileConfigs(prev => {
+      const fileConf = prev[filePath] || {};
+      const sources = [...(fileConf.audioSources || [])];
+      // Pad array if needed
+      while (sources.length <= index) {
+        sources.push('none');
+      }
+      sources[index] = value;
+      return {
+        ...prev,
+        [filePath]: {
+          ...fileConf,
+          audioSources: sources
+        }
+      };
+    });
+  };
+
+  const handleUpdateSubtitleSource = (filePath, index, value) => {
+    setFileConfigs(prev => {
+      const fileConf = prev[filePath] || {};
+      const sources = [...(fileConf.subtitleSources || [])];
+      // Pad array if needed
+      while (sources.length <= index) {
+        sources.push('none');
+      }
+      sources[index] = value;
+      return {
+        ...prev,
+        [filePath]: {
+          ...fileConf,
+          subtitleSources: sources
+        }
+      };
+    });
+  };
 
   const handleUpdateConfig = (filePath, key, value) => {
     setFileConfigs(prev => ({
@@ -313,54 +361,36 @@ export default function App() {
       const next = { ...prev };
       scannedFiles.forEach(file => {
         if (selectedPaths.has(file.fullPath)) {
-          // 1. Match Audio track by language code (Audio Source 1)
-          let audioSrc1 = 'none';
-          if (file.audioStreams.length > 0) {
-            if (batchAudioLang === 'first') {
-              audioSrc1 = '1';
-            } else {
-              const matchedIdx = file.audioStreams.findIndex(s => s.language && languagesMatch(s.language, batchAudioLang));
-              audioSrc1 = matchedIdx !== -1 ? (matchedIdx + 1).toString() : '1';
+          // Match all N audio sources based on languages in batchAudioLangs
+          const audioSources = [];
+          for (let i = 0; i < batchAudioCount; i++) {
+            const langCode = batchAudioLangs[i] || 'none';
+            let trackVal = 'none';
+            if (file.audioStreams.length > 0) {
+              if (langCode === 'first') {
+                trackVal = '1';
+              } else if (langCode !== 'none') {
+                const matchedIdx = file.audioStreams.findIndex(s => s.language && languagesMatch(s.language, langCode));
+                trackVal = matchedIdx !== -1 ? (matchedIdx + 1).toString() : 'none';
+              }
             }
+            audioSources.push(trackVal);
           }
 
-          // 1b. Match Audio track 2 by language code (Audio Source 2)
-          let audioSrc2 = 'none';
-          if (file.audioStreams.length > 0) {
-            if (batchAudioLang2 === 'none') {
-              audioSrc2 = 'none';
-            } else if (batchAudioLang2 === 'first') {
-              audioSrc2 = '1';
-            } else {
-              const matchedIdx = file.audioStreams.findIndex(s => s.language && languagesMatch(s.language, batchAudioLang2));
-              audioSrc2 = matchedIdx !== -1 ? (matchedIdx + 1).toString() : 'none';
+          // Match all M subtitle sources based on languages in batchSubLangs
+          const subtitleSources = [];
+          for (let i = 0; i < batchSubCount; i++) {
+            const langCode = batchSubLangs[i] || 'none';
+            let trackVal = 'none';
+            if (file.subtitleStreams.length > 0) {
+              if (langCode === 'first') {
+                trackVal = '1';
+              } else if (langCode !== 'none') {
+                const matchedIdx = file.subtitleStreams.findIndex(s => s.language && languagesMatch(s.language, langCode));
+                trackVal = matchedIdx !== -1 ? (matchedIdx + 1).toString() : 'none';
+              }
             }
-          }
-
-          // 2. Match Subtitle track by language code (Subtitle Source 1)
-          let subSrc1 = 'none';
-          if (file.subtitleStreams.length > 0) {
-            if (batchSubLang === 'none') {
-              subSrc1 = 'none';
-            } else if (batchSubLang === 'first') {
-              subSrc1 = '1';
-            } else {
-              const matchedIdx = file.subtitleStreams.findIndex(s => s.language && languagesMatch(s.language, batchSubLang));
-              subSrc1 = matchedIdx !== -1 ? (matchedIdx + 1).toString() : 'none';
-            }
-          }
-
-          // 2b. Match Subtitle track 2 by language code (Subtitle Source 2)
-          let subSrc2 = 'none';
-          if (file.subtitleStreams.length > 0) {
-            if (batchSubLang2 === 'none') {
-              subSrc2 = 'none';
-            } else if (batchSubLang2 === 'first') {
-              subSrc2 = '1';
-            } else {
-              const matchedIdx = file.subtitleStreams.findIndex(s => s.language && languagesMatch(s.language, batchSubLang2));
-              subSrc2 = matchedIdx !== -1 ? (matchedIdx + 1).toString() : 'none';
-            }
+            subtitleSources.push(trackVal);
           }
 
           next[file.fullPath] = {
@@ -369,10 +399,13 @@ export default function App() {
             quality: batchQuality,
             framerate: batchFramerate,
             audioCodec: batchAudioCodec,
-            audioSource1: audioSrc1,
-            audioSource2: audioSrc2,
-            subtitleSource1: subSrc1,
-            subtitleSource2: subSrc2
+            audioSources: audioSources,
+            subtitleSources: subtitleSources,
+            // Keep legacy ones for compatibility
+            audioSource1: audioSources[0] || 'none',
+            audioSource2: audioSources[1] || 'none',
+            subtitleSource1: subtitleSources[0] || 'none',
+            subtitleSource2: subtitleSources[1] || 'none'
           };
         }
       });
@@ -1621,10 +1654,10 @@ export default function App() {
                     <th colSpan={4} className="col-divider" style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#00b4d8', textDecoration: 'underline', borderBottom: '2px solid var(--border)' }}>
                       Source Video Info
                     </th>
-                    <th colSpan={8} style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#ffb703', textDecoration: 'underline', borderBottom: '2px solid var(--accent)' }}>
+                    <th colSpan={5} style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#ffb703', textDecoration: 'underline', borderBottom: '2px solid var(--accent)' }}>
                       Transcode Options
                     </th>
-                    <th colSpan={2} style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#2ec4b6', textDecoration: 'underline', borderBottom: '2px solid var(--border)' }}>
+                    <th colSpan={3} style={{ textAlign: 'center', padding: '7px 10px', fontSize: '13px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', color: '#2ec4b6', textDecoration: 'underline', borderBottom: '2px solid var(--border)' }}>
                       Playback & Check
                     </th>
                   </tr>
@@ -1645,10 +1678,7 @@ export default function App() {
                     <th>Quality (RF)</th>
                     <th>Frame Rate</th>
                     <th>Audio Codec</th>
-                    <th>Audio Src 1</th>
-                    <th>Audio Src 2</th>
-                    <th>Subtitle 1</th>
-                    <th>Subtitle 2</th>
+                    <th style={{ minWidth: '260px' }}>Audio & Subtitle Tracks</th>
                     <th>Plex Playback</th>
                     <th>Est. Size</th>
                     <th>Quality Check</th>
@@ -1777,68 +1807,71 @@ export default function App() {
                           </select>
                         </td>
 
-                        {/* Audio Source Track 1 */}
+                        {/* Audio & Subtitle Tracks */}
                         <td>
-                          <select 
-                            className="table-select"
-                            value={config.audioSource1}
-                            onChange={(e) => handleUpdateConfig(file.fullPath, 'audioSource1', e.target.value)}
-                          >
-                            <option value="none">None</option>
-                            {file.audioStreams.map((s, idx) => (
-                              <option key={idx} value={(idx + 1).toString()}>
-                                T{idx + 1} ({s.language})
-                              </option>
-                            ))}
-                          </select>
-                        </td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '4px 0' }}>
+                            {/* Audio track mapping section */}
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                                <span style={{ fontSize: '9px', fontWeight: 'bold', background: 'rgba(0,132,255,0.15)', color: 'var(--accent)', padding: '1px 3px', borderRadius: '3px' }}>AUDIO</span>
+                                <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>({batchAudioCount})</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
+                                {Array.from({ length: batchAudioCount }).map((_, aIdx) => {
+                                  const currentVal = (config.audioSources && config.audioSources[aIdx]) || 
+                                                     (aIdx === 0 ? config.audioSource1 : (aIdx === 1 ? config.audioSource2 : 'none')) || 'none';
+                                  return (
+                                    <select
+                                      key={aIdx}
+                                      className="table-select"
+                                      style={{ fontSize: '9px', padding: '1px 3px', height: '20px', minWidth: '60px', maxWidth: '78px', borderRadius: '3px' }}
+                                      value={currentVal}
+                                      onChange={(e) => handleUpdateAudioSource(file.fullPath, aIdx, e.target.value)}
+                                      title={`Audio Track Slot ${aIdx + 1}`}
+                                    >
+                                      <option value="none">S{aIdx + 1}: None</option>
+                                      {file.audioStreams.map((s, idx) => (
+                                        <option key={idx} value={(idx + 1).toString()}>
+                                          S{aIdx + 1}: T{idx + 1} ({s.language || 'unk'})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  );
+                                })}
+                              </div>
+                            </div>
 
-                        {/* Audio Source Track 2 */}
-                        <td>
-                          <select 
-                            className="table-select"
-                            value={config.audioSource2}
-                            onChange={(e) => handleUpdateConfig(file.fullPath, 'audioSource2', e.target.value)}
-                          >
-                            <option value="none">None</option>
-                            {file.audioStreams.map((s, idx) => (
-                              <option key={idx} value={(idx + 1).toString()}>
-                                T{idx + 1} ({s.language})
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-
-                        {/* Subtitle Track 1 */}
-                        <td>
-                          <select 
-                            className="table-select"
-                            value={config.subtitleSource1}
-                            onChange={(e) => handleUpdateConfig(file.fullPath, 'subtitleSource1', e.target.value)}
-                          >
-                            <option value="none">None</option>
-                            {file.subtitleStreams.map((s, idx) => (
-                              <option key={idx} value={(idx + 1).toString()}>
-                                T{idx + 1} ({s.language})
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-
-                        {/* Subtitle Track 2 */}
-                        <td>
-                          <select 
-                            className="table-select"
-                            value={config.subtitleSource2}
-                            onChange={(e) => handleUpdateConfig(file.fullPath, 'subtitleSource2', e.target.value)}
-                          >
-                            <option value="none">None</option>
-                            {file.subtitleStreams.map((s, idx) => (
-                              <option key={idx} value={(idx + 1).toString()}>
-                                T{idx + 1} ({s.language})
-                              </option>
-                            ))}
-                          </select>
+                            {/* Subtitle track mapping section */}
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                                <span style={{ fontSize: '9px', fontWeight: 'bold', background: 'rgba(46,196,182,0.15)', color: '#2ec4b6', padding: '1px 3px', borderRadius: '3px' }}>SUBTITLE</span>
+                                <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>({batchSubCount})</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
+                                {Array.from({ length: batchSubCount }).map((_, sIdx) => {
+                                  const currentVal = (config.subtitleSources && config.subtitleSources[sIdx]) || 
+                                                     (sIdx === 0 ? config.subtitleSource1 : (sIdx === 1 ? config.subtitleSource2 : 'none')) || 'none';
+                                  return (
+                                    <select
+                                      key={sIdx}
+                                      className="table-select"
+                                      style={{ fontSize: '9px', padding: '1px 3px', height: '20px', minWidth: '60px', maxWidth: '78px', borderRadius: '3px' }}
+                                      value={currentVal}
+                                      onChange={(e) => handleUpdateSubtitleSource(file.fullPath, sIdx, e.target.value)}
+                                      title={`Subtitle Track Slot ${sIdx + 1}`}
+                                    >
+                                      <option value="none">S{sIdx + 1}: None</option>
+                                      {file.subtitleStreams.map((s, idx) => (
+                                        <option key={idx} value={(idx + 1).toString()}>
+                                          S{sIdx + 1}: T{idx + 1} ({s.language || 'unk'})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
                         </td>
 
                         {/* Plex Playback status info */}
@@ -2193,91 +2226,102 @@ export default function App() {
                   <option value="Copy">Copy</option>
                 </select>
               </div>
-              {/* Audio Track 1 Match Language */}
-              <div>
-                <label style={{ fontSize: '11px', marginBottom: '4px' }}>Audio Lang 1</label>
-                <select 
-                  className="table-select" 
-                  style={{ width: '100%', maxWidth: '100%' }}
-                  value={batchAudioLang}
-                  onChange={(e) => setBatchAudioLang(e.target.value)}
-                >
-                  <option value="eng">English (eng)</option>
-                  <option value="spa">Spanish (spa)</option>
-                  <option value="fre">French (fre)</option>
-                  <option value="ger">German (ger)</option>
-                  <option value="jpn">Japanese (jpn)</option>
-                  <option value="ita">Italian (ita)</option>
-                  <option value="chi">Chinese (chi)</option>
-                  <option value="kor">Korean (kor)</option>
-                  <option value="first">First Track</option>
-                </select>
+              {/* Audio Track Count & Subtitle Track Count Sliders */}
+              <div style={{ gridColumn: 'span 2', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>Audio Sources:</span>
+                    <span style={{ color: 'var(--accent)' }}>{batchAudioCount}</span>
+                  </label>
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="10" 
+                    value={batchAudioCount} 
+                    onChange={(e) => setBatchAudioCount(parseInt(e.target.value))}
+                    style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>Subtitle Sources:</span>
+                    <span style={{ color: '#2ec4b6' }}>{batchSubCount}</span>
+                  </label>
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="20" 
+                    value={batchSubCount} 
+                    onChange={(e) => setBatchSubCount(parseInt(e.target.value))}
+                    style={{ width: '100%', accentColor: '#2ec4b6', cursor: 'pointer' }}
+                  />
+                </div>
               </div>
 
-              {/* Audio Track 2 Match Language */}
-              <div>
-                <label style={{ fontSize: '11px', marginBottom: '4px' }}>Audio Lang 2</label>
-                <select 
-                  className="table-select" 
-                  style={{ width: '100%', maxWidth: '100%' }}
-                  value={batchAudioLang2}
-                  onChange={(e) => setBatchAudioLang2(e.target.value)}
-                >
-                  <option value="none">None</option>
-                  <option value="eng">English (eng)</option>
-                  <option value="spa">Spanish (spa)</option>
-                  <option value="fre">French (fre)</option>
-                  <option value="ger">German (ger)</option>
-                  <option value="jpn">Japanese (jpn)</option>
-                  <option value="ita">Italian (ita)</option>
-                  <option value="chi">Chinese (chi)</option>
-                  <option value="kor">Korean (kor)</option>
-                  <option value="first">First Track</option>
-                </select>
+              {/* Dynamic selectors for Audio Languages */}
+              <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)' }}>Audio Track Languages</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '8px', maxHeight: '110px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {Array.from({ length: batchAudioCount }).map((_, idx) => (
+                    <div key={idx}>
+                      <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Slot {idx + 1}</label>
+                      <select 
+                        className="table-select" 
+                        style={{ width: '100%', fontSize: '10.5px', height: '24px', padding: '2px' }}
+                        value={batchAudioLangs[idx] || 'none'}
+                        onChange={(e) => {
+                          const updated = [...batchAudioLangs];
+                          updated[idx] = e.target.value;
+                          setBatchAudioLangs(updated);
+                        }}
+                      >
+                        <option value="none">None</option>
+                        <option value="eng">English (eng)</option>
+                        <option value="spa">Spanish (spa)</option>
+                        <option value="fre">French (fre)</option>
+                        <option value="ger">German (ger)</option>
+                        <option value="jpn">Japanese (jpn)</option>
+                        <option value="ita">Italian (ita)</option>
+                        <option value="chi">Chinese (chi)</option>
+                        <option value="kor">Korean (kor)</option>
+                        <option value="first">First Track</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              {/* Subtitle Track 1 Match Language */}
-              <div>
-                <label style={{ fontSize: '11px', marginBottom: '4px' }}>Subtitle Lang 1</label>
-                <select 
-                  className="table-select" 
-                  style={{ width: '100%', maxWidth: '100%' }}
-                  value={batchSubLang}
-                  onChange={(e) => setBatchSubLang(e.target.value)}
-                >
-                  <option value="none">None</option>
-                  <option value="eng">English (eng)</option>
-                  <option value="spa">Spanish (spa)</option>
-                  <option value="fre">French (fre)</option>
-                  <option value="ger">German (ger)</option>
-                  <option value="jpn">Japanese (jpn)</option>
-                  <option value="ita">Italian (ita)</option>
-                  <option value="chi">Chinese (chi)</option>
-                  <option value="kor">Korean (kor)</option>
-                  <option value="first">First Track</option>
-                </select>
-              </div>
-
-              {/* Subtitle Track 2 Match Language */}
-              <div>
-                <label style={{ fontSize: '11px', marginBottom: '4px' }}>Subtitle Lang 2</label>
-                <select 
-                  className="table-select" 
-                  style={{ width: '100%', maxWidth: '100%' }}
-                  value={batchSubLang2}
-                  onChange={(e) => setBatchSubLang2(e.target.value)}
-                >
-                  <option value="none">None</option>
-                  <option value="eng">English (eng)</option>
-                  <option value="spa">Spanish (spa)</option>
-                  <option value="fre">French (fre)</option>
-                  <option value="ger">German (ger)</option>
-                  <option value="jpn">Japanese (jpn)</option>
-                  <option value="ita">Italian (ita)</option>
-                  <option value="chi">Chinese (chi)</option>
-                  <option value="kor">Korean (kor)</option>
-                  <option value="first">First Track</option>
-                </select>
+              {/* Dynamic selectors for Subtitle Languages */}
+              <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)' }}>Subtitle Track Languages</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '8px', maxHeight: '110px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {Array.from({ length: batchSubCount }).map((_, idx) => (
+                    <div key={idx}>
+                      <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Slot {idx + 1}</label>
+                      <select 
+                        className="table-select" 
+                        style={{ width: '100%', fontSize: '10.5px', height: '24px', padding: '2px' }}
+                        value={batchSubLangs[idx] || 'none'}
+                        onChange={(e) => {
+                          const updated = [...batchSubLangs];
+                          updated[idx] = e.target.value;
+                          setBatchSubLangs(updated);
+                        }}
+                      >
+                        <option value="none">None</option>
+                        <option value="eng">English (eng)</option>
+                        <option value="spa">Spanish (spa)</option>
+                        <option value="fre">French (fre)</option>
+                        <option value="ger">German (ger)</option>
+                        <option value="jpn">Japanese (jpn)</option>
+                        <option value="ita">Italian (ita)</option>
+                        <option value="chi">Chinese (chi)</option>
+                        <option value="kor">Korean (kor)</option>
+                        <option value="first">First Track</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
