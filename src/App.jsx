@@ -1672,7 +1672,7 @@ export default function App() {
                       />
                     </th>
                     <th style={{ width: '320px', minWidth: '320px' }}>Name</th>
-                    <th style={{ width: '280px', minWidth: '280px' }}>Original Streams</th>
+                    <th style={{ width: '180px', minWidth: '180px' }}>Original Streams</th>
                     <th className="col-divider compact-cell" style={{ width: '85px', textAlign: 'center' }}>Size / Ext</th>
                     
                     {/* Playback & Check Columns */}
@@ -1721,7 +1721,7 @@ export default function App() {
                         </td>
                         
                         {/* Expanded Original Streams details cell */}
-                        <td>
+                        <td style={{ width: '180px', minWidth: '180px' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '10.5px', padding: '4px 0' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <span style={{ fontSize: '9px', fontWeight: 'bold', background: 'rgba(0,132,255,0.15)', color: 'var(--accent)', padding: '1px 4px', borderRadius: '3px' }}>VIDEO</span>
