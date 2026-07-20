@@ -1445,13 +1445,16 @@ export default function App() {
                   {selectedPaths.size} selected
                 </span>
               )}
+            </div>
+            
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               {scanDir && (
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={handleRefreshScan}
                   disabled={isScanning}
                   title={`Refresh: ${scanDir}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 8px', fontSize: '11px' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px', fontSize: '11px' }}
                 >
                   <RefreshCw size={11} className={isScanning ? 'animate-spin' : ''} />
                   Refresh
@@ -1461,108 +1464,135 @@ export default function App() {
                 className="btn btn-secondary btn-sm"
                 onClick={handleScanNewFolder}
                 disabled={isScanning}
-                style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 8px', fontSize: '11px' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px', fontSize: '11px' }}
                 title="Scan an additional folder and merge results"
               >
                 <FolderOpen size={11} />
                 Scan Folder
               </button>
             </div>
-            
-            <div className="search-filter-row" style={{ flexDirection: 'column', gap: '6px', alignItems: 'stretch' }}>
+          </div>
+
+          {/* Sub-Header Toolbar for Search, Sort, and Filters */}
+          {scannedFiles.length > 0 && (
+            <div className="panel-sub-header" style={{
+              padding: '10px 16px',
+              background: 'rgba(20, 23, 29, 0.25)',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px'
+            }}>
               {/* Row 1: Search + Sort */}
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <div className="search-input-wrapper" style={{ flex: 1 }}>
-                  <Search size={14} className="search-icon" />
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="search-input-wrapper" style={{ flex: 1, minWidth: '200px' }}>
+                  <Search size={14} className="search-icon" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                   <input
                     type="text"
                     className="search-input"
                     placeholder="Search scanned files..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    style={{ paddingLeft: '32px', height: '32px' }}
                   />
                 </div>
-                <select
-                  className="filter-select"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  style={{ minWidth: '150px' }}
-                >
-                  <option value="name">Sort: Name</option>
-                  <option value="size">Sort: File Size</option>
-                  <option value="plexStatus">Sort: Plex Status</option>
-                  <option value="transcodedStatus">Sort: Transcoded</option>
-                  <option value="videoCodec">Sort: Video Codec</option>
-                  <option value="audioTracks">Sort: Audio Tracks</option>
-                  <option value="extension">Sort: Extension</option>
-                </select>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
-                  title={sortDir === 'asc' ? 'Ascending — click to switch to Descending' : 'Descending — click to switch to Ascending'}
-                  style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', minWidth: 'unset' }}
-                >
-                  {sortDir === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
-                </button>
+                
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <select
+                    className="filter-select"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    style={{ height: '32px', padding: '0 8px', borderRadius: '6px', background: 'var(--bg-darker)', border: '1px solid var(--border)', color: 'var(--text-main)', fontSize: '12px', outline: 'none' }}
+                  >
+                    <option value="name">Sort: Name</option>
+                    <option value="size">Sort: File Size</option>
+                    <option value="plexStatus">Sort: Plex Status</option>
+                    <option value="transcodedStatus">Sort: Transcoded</option>
+                    <option value="videoCodec">Sort: Video Codec</option>
+                    <option value="audioTracks">Sort: Audio Tracks</option>
+                    <option value="extension">Sort: Extension</option>
+                  </select>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                    title={sortDir === 'asc' ? 'Ascending — click to switch to Descending' : 'Descending — click to switch to Ascending'}
+                    style={{ height: '32px', width: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', background: 'var(--bg-darker)', minWidth: 'unset', cursor: 'pointer' }}
+                  >
+                    {sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+                  </button>
+                </div>
               </div>
 
-              {/* Row 2: Filter pills */}
-              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
-                {/* Transcoded status pills */}
-                {[
-                  { value: 'all', label: 'All' },
-                  { value: 'not-transcoded', label: 'Not Transcoded' },
-                  { value: 'transcoded', label: 'Transcoded' },
-                ].map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setTranscodedFilter(opt.value)}
-                    style={{
-                      padding: '2px 9px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      border: `1px solid ${transcodedFilter === opt.value ? 'var(--accent)' : 'var(--border)'}`,
-                      background: transcodedFilter === opt.value ? 'rgba(0,132,255,0.18)' : 'var(--bg-card)',
-                      color: transcodedFilter === opt.value ? 'var(--accent)' : 'var(--text-muted)',
-                      transition: 'all 0.15s'
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+              {/* Row 2: Filter Pills segments */}
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)' }}>Transcode:</span>
+                  <div style={{ display: 'flex', gap: '2px', background: 'rgba(0,0,0,0.2)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                    {[
+                      { value: 'all', label: 'All' },
+                      { value: 'not-transcoded', label: 'Not Transcoded' },
+                      { value: 'transcoded', label: 'Transcoded' },
+                    ].map(opt => {
+                      const isActive = transcodedFilter === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setTranscodedFilter(opt.value)}
+                          style={{
+                            padding: '3px 10px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            border: 'none',
+                            background: isActive ? 'rgba(0, 132, 255, 0.2)' : 'transparent',
+                            color: isActive ? 'var(--accent)' : 'var(--text-muted)',
+                            transition: 'all 0.15s'
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                {/* Divider */}
-                <span style={{ width: '1px', height: '14px', background: 'var(--border)', margin: '0 2px' }} />
-
-                {/* Plex status pills */}
-                {[
-                  { value: 'all', label: 'All Formats' },
-                  { value: 'plex-ok', label: 'Plex OK' },
-                  { value: 'plex-not-ok', label: 'Plex Incompatible' },
-                ].map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setFilterMode(opt.value)}
-                    style={{
-                      padding: '2px 9px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      border: `1px solid ${filterMode === opt.value ? '#2ec4b6' : 'var(--border)'}`,
-                      background: filterMode === opt.value ? 'rgba(46,196,182,0.15)' : 'var(--bg-card)',
-                      color: filterMode === opt.value ? '#2ec4b6' : 'var(--text-muted)',
-                      transition: 'all 0.15s'
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)' }}>Plex Format:</span>
+                  <div style={{ display: 'flex', gap: '2px', background: 'rgba(0,0,0,0.2)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                    {[
+                      { value: 'all', label: 'All Formats' },
+                      { value: 'plex-ok', label: 'Plex OK' },
+                      { value: 'plex-not-ok', label: 'Plex Incompatible' },
+                    ].map(opt => {
+                      const isActive = filterMode === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setFilterMode(opt.value)}
+                          style={{
+                            padding: '3px 10px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            border: 'none',
+                            background: isActive ? 'rgba(46, 196, 182, 0.18)' : 'transparent',
+                            color: isActive ? '#2ec4b6' : 'var(--text-muted)',
+                            transition: 'all 0.15s'
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {scannedFiles.length === 0 ? (
             <div 
