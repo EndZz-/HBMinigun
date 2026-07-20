@@ -189,6 +189,7 @@ export default function App() {
   const [batchApplyCollapsed, setBatchApplyCollapsed] = useState(false);
   const [autoScanCollapsed, setAutoScanCollapsed] = useState(false);
   const [settingsPanelCollapsed, setSettingsPanelCollapsed] = useState(false);
+  const [mediaLibraryCollapsed, setMediaLibraryCollapsed] = useState(false);
   const [autoRescanInterval, setAutoRescanInterval] = useState(0); // minutes, 0 means disabled
   const [autoAddToQueue, setAutoAddToQueue] = useState(false);
   const [timeUntilNextScan, setTimeUntilNextScan] = useState(0); // seconds
@@ -1020,6 +1021,7 @@ export default function App() {
     const filesToProcess = scannedFiles.filter(f => selectedPaths.has(f.fullPath));
 
     setQueueCollapsed(false);
+    setMediaLibraryCollapsed(true);
 
     const newQueueItems = filesToProcess.map(f => ({
       file: f,
@@ -1472,9 +1474,14 @@ export default function App() {
       {/* Main Panel */}
       <main className="app-body">
         {/* Left Side: Directory Scanner */}
-        <section className="left-panel">
+        <section className="left-panel" style={mediaLibraryCollapsed ? { flex: 'none', height: 'auto' } : { flex: 1 }}>
           <div className="panel-header">
-            <div className="panel-title-area">
+            <div 
+              className="panel-title-area"
+              onClick={() => setMediaLibraryCollapsed(!mediaLibraryCollapsed)}
+              style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              {mediaLibraryCollapsed ? <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} /> : <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />}
               <span className="panel-title">Media Library</span>
               <span className="badge active">{scannedFiles.length} files</span>
               {selectedPaths.size > 0 && (
@@ -1509,6 +1516,9 @@ export default function App() {
               </button>
             </div>
           </div>
+
+          {!mediaLibraryCollapsed && (
+            <>
 
           {/* Sub-Header Toolbar for Search, Sort, and Filters */}
           {scannedFiles.length > 0 && (
@@ -1926,6 +1936,8 @@ export default function App() {
                 </tbody>
               </table>
             </div>
+          )}
+            </>
           )}
         </section>
         <section className={`horizontal-settings-panel ${settingsPanelCollapsed ? 'collapsed' : ''}`}>
