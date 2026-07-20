@@ -2042,6 +2042,17 @@ export default function App() {
                     </div>
                   </div>
                 )}
+
+                <button 
+                  type="button"
+                  className="btn btn-primary btn-xs"
+                  style={{ width: '100%', height: '24px', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'var(--accent)', marginTop: '8px' }}
+                  onClick={handleOpenSyncModal}
+                  disabled={isTranscoding || isPerformingMoveCopy || (queue.filter(item => item.status === 'Completed').length === 0 && scannedFiles.filter(f => f.isProcessed).length === 0)}
+                >
+                  {isPerformingMoveCopy ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                  Verify & Sync Transcoded Files
+                </button>
               </div>
 
               {/* Column 2: Batch Apply Settings & Preset */}
