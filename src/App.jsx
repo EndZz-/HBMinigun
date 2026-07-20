@@ -1873,7 +1873,7 @@ export default function App() {
                                 <select
                                   key={aIdx}
                                   className="table-select"
-                                  style={{ fontSize: '9px', padding: '1px 3px', height: '20px', minWidth: '60px', maxWidth: '78px', borderRadius: '3px' }}
+                                  style={{ fontSize: '11.5px', padding: '2px 4px', height: '24px', minWidth: '85px', maxWidth: '110px', borderRadius: '3px' }}
                                   value={currentVal}
                                   onChange={(e) => handleUpdateAudioSource(file.fullPath, aIdx, e.target.value)}
                                   title={`Audio Track Slot ${aIdx + 1}`}
@@ -1900,7 +1900,7 @@ export default function App() {
                                 <select
                                   key={sIdx}
                                   className="table-select"
-                                  style={{ fontSize: '9px', padding: '1px 3px', height: '20px', minWidth: '60px', maxWidth: '78px', borderRadius: '3px' }}
+                                  style={{ fontSize: '11.5px', padding: '2px 4px', height: '24px', minWidth: '85px', maxWidth: '110px', borderRadius: '3px' }}
                                   value={currentVal}
                                   onChange={(e) => handleUpdateSubtitleSource(file.fullPath, sIdx, e.target.value)}
                                   title={`Subtitle Track Slot ${sIdx + 1}`}
