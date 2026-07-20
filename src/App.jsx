@@ -1432,7 +1432,14 @@ export default function App() {
   // Wait, let's see if we need it. Let's add a file selection dialog.
 
   return (
-    <div className="app-container" style={{ gridTemplateRows: `56px 1fr ${queueCollapsed ? 32 : queueHeight}px` }}>
+    <div 
+      className="app-container" 
+      style={{ 
+        gridTemplateRows: (mediaLibraryCollapsed && !queueCollapsed) 
+          ? '56px auto 1fr' 
+          : `56px 1fr ${queueCollapsed ? 32 : queueHeight}px` 
+      }}
+    >
       {/* Header */}
       <header className="app-header">
         <div className="logo-section">
