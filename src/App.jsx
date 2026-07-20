@@ -1923,23 +1923,33 @@ export default function App() {
               </table>
             </div>
           )}
-        </section>
 
-        {/* Right Side: Options Panel */}
-        <section className="right-panel">
-          {/* Target Concurrency */}
-          <div className="section-title">
-            <Sliders size={14} />
-            Job Engine Config
-          </div>
-          <div className="form-group">
-            <label>Concurrent Handbrake Engines</label>
-            <div className="slider-container">
+          {/* Job Engine Config Bar */}
+          <div 
+            className="job-engine-bar"
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between', 
+              padding: '10px 16px', 
+              background: 'rgba(28, 32, 42, 0.6)', 
+              borderTop: '1px solid var(--border)', 
+              gap: '24px' 
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-bright)', fontSize: '12px', fontWeight: 'bold' }}>
+              <Sliders size={14} style={{ color: 'var(--accent)' }} />
+              <span>Job Engine Config:</span>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, maxWidth: '400px' }}>
+              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Concurrent Engines</span>
               <input 
                 type="range" 
                 min="1" 
                 max="8" 
                 className="custom-slider"
+                style={{ flex: 1, margin: 0 }}
                 value={enginesCount}
                 onChange={(e) => {
                   const n = parseInt(e.target.value);
@@ -1949,9 +1959,30 @@ export default function App() {
                   }
                 }}
               />
-              <span className="slider-val">{enginesCount}</span>
+              <span 
+                style={{ 
+                  background: 'rgba(0, 132, 255, 0.15)', 
+                  color: 'var(--accent)', 
+                  padding: '2px 8px', 
+                  borderRadius: '4px', 
+                  fontSize: '12px', 
+                  fontWeight: 'bold',
+                  minWidth: '24px',
+                  textAlign: 'center'
+                }}
+              >
+                {enginesCount}
+              </span>
+            </div>
+            
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              Controls the number of simultaneous transcode processes run by the engine.
             </div>
           </div>
+        </section>
+
+        {/* Right Side: Options Panel */}
+        <section className="right-panel">
 
           {/* Transcode Directory Options */}
           <div 
