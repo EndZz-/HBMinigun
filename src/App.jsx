@@ -1151,14 +1151,32 @@ export default function App() {
   const [isPerformingMoveCopy, setIsPerformingMoveCopy] = useState(false);
   
   const handleOpenSyncModal = async () => {
-    const completedItems = queue.filter(item => item.status === 'Completed');
-    if (completedItems.length === 0) {
-      showToast('No Completed Files', 'No successfully transcoded files exist in the current queue to verify/sync.', 'warning');
+    if (transcodeMode !== 'transcodeDir' || !destinationDir) {
+      showToast('Operation Failed', 'Post-process Verification & Sync is only available when transcoding to a directory.', 'warning');
       return;
     }
 
-    if (transcodeMode !== 'transcodeDir' || !destinationDir) {
-      showToast('Operation Failed', 'Post-process Verification & Sync is only available when transcoding to a directory.', 'warning');
+    // 1. Gathers completed items from the active queue
+    const completedFromQueue = queue.filter(item => item.status === 'Completed').map(item => ({
+      file: item.file,
+      status: 'Completed'
+    }));
+
+    // 2. Gathers processed items from the scanned files list
+    const processedFromScanned = scannedFiles.filter(f => f.isProcessed).map(f => ({
+      file: f,
+      status: 'Completed'
+    }));
+
+    // Merge lists to avoid duplicates (active queue takes priority)
+    const mergedMap = new Map();
+    processedFromScanned.forEach(item => mergedMap.set(item.file.fullPath, item));
+    completedFromQueue.forEach(item => mergedMap.set(item.file.fullPath, item));
+    
+    const completedItems = Array.from(mergedMap.values());
+
+    if (completedItems.length === 0) {
+      showToast('No Completed Files', 'No successfully transcoded files exist in the current queue or directory to verify/sync.', 'warning');
       return;
     }
 
@@ -1187,7 +1205,15 @@ export default function App() {
         };
       });
 
-      setSyncItems(mapped);
+      // Filter out files that don't actually exist on disk in the output directory
+      const existingMapped = mapped.filter(item => item.transcodedExists);
+
+      if (existingMapped.length === 0) {
+        showToast('No Files on Disk', 'The completed transcoded files could not be found on disk in the output directory.', 'warning');
+        return;
+      }
+
+      setSyncItems(existingMapped);
       setSyncModalOpen(true);
     } catch (err) {
       showToast('Sync Initialization Failed', err.message);
@@ -1955,7 +1981,7 @@ export default function App() {
                   className="btn btn-primary btn-sm"
                   style={{ width: '100%', padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'var(--accent)' }}
                   onClick={handleOpenSyncModal}
-                  disabled={isTranscoding || isPerformingMoveCopy || queue.filter(item => item.status === 'Completed').length === 0}
+                  disabled={isTranscoding || isPerformingMoveCopy || (queue.filter(item => item.status === 'Completed').length === 0 && scannedFiles.filter(f => f.isProcessed).length === 0)}
                 >
                   {isPerformingMoveCopy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                   Verify & Sync Transcoded Files
