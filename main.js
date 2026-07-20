@@ -1296,6 +1296,7 @@ function createWindow() {
     }
   });
 
+  mainWindow.maximize();
   mainWindow.setMenuBarVisibility(false);
 
   // Check if running in development mode
