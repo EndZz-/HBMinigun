@@ -110,8 +110,8 @@ body {
 
 /* Main Dashboard Split */
 .app-body {
-  display: grid;
-  grid-template-columns: 1fr 380px;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border-bottom: 1px solid var(--border);
 }
@@ -121,7 +121,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid var(--border);
+  flex: 1;
 }
 
 .panel-header {
@@ -447,6 +447,52 @@ body {
 
 .right-panel::-webkit-scrollbar {
   width: 6px;
+}
+
+/* Horizontal Settings Panel */
+.horizontal-settings-panel {
+  background: var(--bg-dark);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  max-height: 290px;
+  min-height: 290px;
+  overflow: hidden;
+}
+
+.horizontal-settings-panel.collapsed {
+  max-height: 28px;
+  min-height: 28px;
+}
+
+.horizontal-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  padding: 12px 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.horizontal-settings-grid::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.settings-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.horizontal-settings-panel .form-group {
+  margin-bottom: 8px;
+}
+
+.horizontal-settings-panel .section-title {
+  margin-bottom: 6px;
+  padding-bottom: 4px;
 }
 
 .section-title {

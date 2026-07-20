@@ -184,10 +184,11 @@ export default function App() {
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
   const [sampleFile, setSampleFile] = useState(null);
   const [sampleConfig, setSampleConfig] = useState(null);
-  const [directoryOptionsCollapsed, setDirectoryOptionsCollapsed] = useState(true);
-  const [presetProfileCollapsed, setPresetProfileCollapsed] = useState(true);
-  const [batchApplyCollapsed, setBatchApplyCollapsed] = useState(true);
-  const [autoScanCollapsed, setAutoScanCollapsed] = useState(true);
+  const [directoryOptionsCollapsed, setDirectoryOptionsCollapsed] = useState(false);
+  const [presetProfileCollapsed, setPresetProfileCollapsed] = useState(false);
+  const [batchApplyCollapsed, setBatchApplyCollapsed] = useState(false);
+  const [autoScanCollapsed, setAutoScanCollapsed] = useState(false);
+  const [settingsPanelCollapsed, setSettingsPanelCollapsed] = useState(false);
   const [autoRescanInterval, setAutoRescanInterval] = useState(0); // minutes, 0 means disabled
   const [autoAddToQueue, setAutoAddToQueue] = useState(false);
   const [timeUntilNextScan, setTimeUntilNextScan] = useState(0); // seconds
@@ -1923,537 +1924,368 @@ export default function App() {
               </table>
             </div>
           )}
-
-          {/* Job Engine Config Bar */}
+        </section>
+        <section className={`horizontal-settings-panel ${settingsPanelCollapsed ? 'collapsed' : ''}`}>
           <div 
-            className="job-engine-bar"
+            className="horizontal-settings-header" 
             style={{ 
               display: 'flex', 
-              alignItems: 'center', 
               justifyContent: 'space-between', 
-              padding: '10px 16px', 
-              background: 'rgba(28, 32, 42, 0.6)', 
-              borderTop: '1px solid var(--border)', 
-              gap: '24px' 
+              alignItems: 'center', 
+              padding: '6px 16px', 
+              background: 'rgba(20, 23, 29, 0.8)', 
+              borderBottom: '1px solid var(--border)', 
+              cursor: 'pointer', 
+              userSelect: 'none',
+              height: '28px'
             }}
+            onClick={() => setSettingsPanelCollapsed(!settingsPanelCollapsed)}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-bright)', fontSize: '12px', fontWeight: 'bold' }}>
-              <Sliders size={14} style={{ color: 'var(--accent)' }} />
-              <span>Job Engine Config:</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-bright)', fontSize: '10.5px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              <Sliders size={12} style={{ color: 'var(--accent)' }} />
+              <span>Transcode Options & Settings Panel</span>
             </div>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, maxWidth: '400px' }}>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Concurrent Engines</span>
-              <input 
-                type="range" 
-                min="1" 
-                max="8" 
-                className="custom-slider"
-                style={{ flex: 1, margin: 0 }}
-                value={enginesCount}
-                onChange={(e) => {
-                  const n = parseInt(e.target.value);
-                  setEnginesCount(n);
-                  if (isTranscoding) {
-                    window.api.setMaxEngines(n).catch(() => {});
-                  }
-                }}
-              />
-              <span 
-                style={{ 
-                  background: 'rgba(0, 132, 255, 0.15)', 
-                  color: 'var(--accent)', 
-                  padding: '2px 8px', 
-                  borderRadius: '4px', 
-                  fontSize: '12px', 
-                  fontWeight: 'bold',
-                  minWidth: '24px',
-                  textAlign: 'center'
-                }}
-              >
-                {enginesCount}
-              </span>
-            </div>
-            
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              Controls the number of simultaneous transcode processes run by the engine.
-            </div>
-          </div>
-        </section>
-
-        {/* Right Side: Options Panel */}
-        <section className="right-panel">
-
-          {/* Transcode Directory Options */}
-          <div 
-            className="section-title"
-            onClick={() => setDirectoryOptionsCollapsed(!directoryOptionsCollapsed)}
-            style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <FolderOpen size={14} />
-              Transcode Directory Options
-            </div>
-            {directoryOptionsCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-          </div>
-          
-          {!directoryOptionsCollapsed && (
-            <>
-              <div className="form-group">
-              <label>Transcode Strategy</label>
-            <div className="radio-group">
-              <div 
-                className={`radio-card ${transcodeMode === 'transcodeDir' ? 'selected' : ''}`}
-                onClick={() => !isTranscoding && setTranscodeMode('transcodeDir')}
-              >
-                <div className="radio-card-header">
-                  <div className="radio-dot" />
-                  Option #1: Transcode to Destination Folder
-                </div>
-                <div className="radio-card-desc">
-                  Transcodes directly to another output folder preserving library structures.
-                </div>
-              </div>
-
-              <div 
-                className={`radio-card ${transcodeMode === 'replace' ? 'selected' : ''}`}
-                onClick={() => !isTranscoding && setTranscodeMode('replace')}
-              >
-                <div className="radio-card-header">
-                  <div className="radio-dot" />
-                  Option #2: Replace Source Files (Temp Directory)
-                </div>
-                <div className="radio-card-desc">
-                  Transcodes to a temp folder first, then replaces the source files (highly recommended to prevent duplicates).
-                </div>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)' }}>
+              {settingsPanelCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
             </div>
           </div>
 
-          {transcodeMode === 'transcodeDir' ? (
-            <div style={{ display: 'contents' }}>
-              <div className="form-group">
-                <label>Destination Directory</label>
-                <div className="input-with-button">
-                  <input 
-                    type="text" 
-                    className="text-input" 
-                    placeholder="Select transcode destination folder..."
-                    value={destinationDir}
-                    onChange={(e) => setDestinationDir(e.target.value)}
-                    disabled={isTranscoding}
-                  />
-                  <button className="btn btn-secondary" onClick={handleBrowseDestination} disabled={isTranscoding}>
-                    Browse
-                  </button>
+          {!settingsPanelCollapsed && (
+            <div className="horizontal-settings-grid">
+              {/* Column 1: Strategy & Directory */}
+              <div className="settings-col">
+                <div className="section-title">
+                  <FolderOpen size={13} style={{ color: 'var(--accent)' }} />
+                  <span>Directory & Strategy</span>
                 </div>
-              </div>
-
-              <div className="form-group" style={{ background: 'rgba(28, 32, 42, 0.4)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                <label style={{ color: 'var(--accent)', marginBottom: '8px', display: 'block' }}>Automatic Post-Transcode Action</label>
-                <select 
-                  className="table-select" 
-                  style={{ width: '100%', maxWidth: '100%', marginBottom: '12px' }}
-                  value={postAction}
-                  onChange={(e) => setPostAction(e.target.value)}
-                  disabled={isTranscoding}
-                >
-                  <option value="none">Do Nothing (Default)</option>
-                  <option value="move">Move (Delete Source & Replace)</option>
-                  <option value="copy">Copy (Keep Transcoded & Replace Source)</option>
-                </select>
                 
-                <label style={{ color: 'var(--text-bright)', marginBottom: '8px', display: 'block', fontSize: '11px' }}>Manual Verification & Sync</label>
+                <div className="form-group">
+                  <label style={{ fontSize: '10.5px', marginBottom: '3px' }}>Transcode Strategy</label>
+                  <select 
+                    className="table-select"
+                    style={{ width: '100%', padding: '3px 6px', height: '26px' }}
+                    value={transcodeMode}
+                    onChange={(e) => setTranscodeMode(e.target.value)}
+                    disabled={isTranscoding}
+                  >
+                    <option value="transcodeDir">Option #1: Transcode to Destination Folder</option>
+                    <option value="inPlace">Option #2: Transcode in Place (Direct Swap)</option>
+                    <option value="safeRename">Option #3: Safe Rename in Place (Recommended)</option>
+                  </select>
+                </div>
+
+                {transcodeMode === 'transcodeDir' ? (
+                  <>
+                    <div className="form-group">
+                      <label style={{ fontSize: '10.5px', marginBottom: '3px' }}>Destination Folder</label>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <input 
+                          type="text" 
+                          className="text-input" 
+                          placeholder="Select Destination Folder..." 
+                          value={destinationDir} 
+                          readOnly 
+                          style={{ flex: 1, padding: '3px 8px', fontSize: '11px', height: '26px' }}
+                        />
+                        <button 
+                          className="btn btn-secondary btn-xs" 
+                          style={{ padding: '0 8px', height: '26px' }}
+                          onClick={handleBrowseDestination}
+                          disabled={isTranscoding}
+                        >
+                          Browse
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                      <input 
+                        type="checkbox" 
+                        id="postActionMove" 
+                        className="custom-checkbox"
+                        checked={postAction === 'move'}
+                        onChange={(e) => setPostAction(e.target.checked ? 'move' : 'none')}
+                        disabled={isTranscoding}
+                      />
+                      <label htmlFor="postActionMove" style={{ fontSize: '11px', color: 'var(--text-bright)', cursor: 'pointer', margin: 0 }}>
+                        Move completed file to source folder
+                      </label>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ display: 'contents' }}>
+                    <div className="form-group">
+                      <label style={{ fontSize: '10.5px', marginBottom: '3px' }}>Temp Transcode Directory</label>
+                      <input 
+                        type="text" 
+                        className="text-input" 
+                        value={settings.tempDir || 'C:\\TempHBMG'} 
+                        disabled 
+                        style={{ opacity: 0.8, padding: '3px 8px', fontSize: '11px', height: '26px' }}
+                      />
+                    </div>
+                    
+                    <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                      <input 
+                        type="checkbox" 
+                        id="replaceActionMove" 
+                        className="custom-checkbox"
+                        checked={replaceAction === 'move'}
+                        onChange={(e) => setReplaceAction(e.target.checked ? 'move' : 'copy')}
+                        disabled={isTranscoding}
+                      />
+                      <label htmlFor="replaceActionMove" style={{ fontSize: '11px', color: 'var(--text-bright)', cursor: 'pointer', margin: 0 }}>
+                        Move transcoded file (deletes original)
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Column 2: Preset Profile & Auto-Scan */}
+              <div className="settings-col" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)', paddingLeft: '12px' }}>
+                <div className="section-title">
+                  <Clock size={13} style={{ color: '#2ec4b6' }} />
+                  <span>Preset & Auto-Scan</span>
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontSize: '10.5px', marginBottom: '2px' }}>Active Preset Profile</label>
+                  <div className="relative-dir-box" title={settings.handbrakePresetPath} style={{ padding: '4px 8px', fontSize: '11px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {settings.handbrakePresetName ? settings.handbrakePresetName : 'Manual / Fallback'}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontSize: '10.5px', marginBottom: '3px' }}>Periodic Rescan (Minutes)</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      className="text-input" 
+                      placeholder="0 to disable"
+                      value={autoRescanInterval}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setAutoRescanInterval(isNaN(val) ? 0 : val);
+                      }}
+                      disabled={isTranscoding && autoRescanInterval > 0}
+                      style={{ width: '80px', padding: '3px 8px', fontSize: '11px', height: '26px' }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <input 
+                        type="checkbox" 
+                        id="autoAddToQueue" 
+                        className="custom-checkbox"
+                        checked={autoAddToQueue}
+                        onChange={(e) => setAutoAddToQueue(e.target.checked)}
+                      />
+                      <label htmlFor="autoAddToQueue" style={{ fontSize: '10.5px', color: 'var(--text-bright)', cursor: 'pointer', margin: 0 }}>
+                        Auto-queue
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {autoRescanInterval > 0 && scanDir && (
+                  <div style={{ fontSize: '11px', color: 'var(--accent)', marginTop: '2px' }}>
+                    Next scan in: <strong>{timeUntilNextScan}s</strong>
+                  </div>
+                )}
+              </div>
+
+              {/* Column 3: Batch Apply Settings */}
+              <div className="settings-col" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)', paddingLeft: '12px' }}>
+                <div className="section-title">
+                  <Sliders size={13} style={{ color: '#ffb703' }} />
+                  <span>Batch Apply Settings</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <div>
+                    <label style={{ fontSize: '9.5px', color: 'var(--text-muted)' }}>Video Codec</label>
+                    <select 
+                      className="table-select" 
+                      style={{ width: '100%', padding: '2px 4px', height: '24px', fontSize: '11px' }}
+                      value={batchVideoCodec}
+                      onChange={(e) => setBatchVideoCodec(e.target.value)}
+                    >
+                      <option value="h264">H.264</option>
+                      <option value="h265">H.265</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '9.5px', color: 'var(--text-muted)' }}>Quality (RF)</label>
+                    <select 
+                      className="table-select" 
+                      style={{ width: '100%', padding: '2px 4px', height: '24px', fontSize: '11px' }}
+                      value={batchQuality}
+                      onChange={(e) => setBatchQuality(parseInt(e.target.value))}
+                    >
+                      {Array.from({ length: 21 }, (_, i) => 30 - i).map(q => (
+                        <option key={q} value={q}>RF {q}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '9.5px', color: 'var(--text-muted)' }}>Frame Rate</label>
+                    <select 
+                      className="table-select" 
+                      style={{ width: '100%', padding: '2px 4px', height: '24px', fontSize: '11px' }}
+                      value={batchFramerate}
+                      onChange={(e) => setBatchFramerate(e.target.value)}
+                    >
+                      <option value="constant">Constant</option>
+                      <option value="variable">Variable</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '9.5px', color: 'var(--text-muted)' }}>Audio Codec</label>
+                    <select 
+                      className="table-select" 
+                      style={{ width: '100%', padding: '2px 4px', height: '24px', fontSize: '11px' }}
+                      value={batchAudioCodec}
+                      onChange={(e) => setBatchAudioCodec(e.target.value)}
+                    >
+                      <option value="AAC">AAC</option>
+                      <option value="AC3">AC3</option>
+                      <option value="EAC3">EAC3</option>
+                      <option value="MP3">MP3</option>
+                      <option value="Copy">Copy</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '4px' }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold' }}>
+                      <span>Audio Src</span>
+                      <span style={{ color: 'var(--accent)' }}>{batchAudioCount}</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="10" 
+                      value={batchAudioCount} 
+                      onChange={(e) => setBatchAudioCount(parseInt(e.target.value))}
+                      style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer', height: '14px' }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold' }}>
+                      <span>Sub Src</span>
+                      <span style={{ color: '#2ec4b6' }}>{batchSubCount}</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="20" 
+                      value={batchSubCount} 
+                      onChange={(e) => setBatchSubCount(parseInt(e.target.value))}
+                      style={{ width: '100%', accentColor: '#2ec4b6', cursor: 'pointer', height: '14px' }}
+                    />
+                  </div>
+                </div>
+
                 <button 
                   type="button"
-                  className="btn btn-primary btn-sm"
-                  style={{ width: '100%', padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'var(--accent)' }}
-                  onClick={handleOpenSyncModal}
-                  disabled={isTranscoding || isPerformingMoveCopy || (queue.filter(item => item.status === 'Completed').length === 0 && scannedFiles.filter(f => f.isProcessed).length === 0)}
+                  className="btn btn-outline-blue btn-xs"
+                  style={{ width: '100%', height: '24px', fontSize: '11px', marginTop: '2px' }}
+                  onClick={handleApplyBatchConfig}
+                  disabled={selectedPaths.size === 0}
                 >
-                  {isPerformingMoveCopy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                  Verify & Sync Transcoded Files
+                  Apply Batch ({selectedPaths.size})
                 </button>
-                <span className="text-muted" style={{ fontSize: '10.5px', marginTop: '8px', display: 'block' }}>
-                  Compare output files on disk with original videos, customize per-file sync actions, and run the replacement process.
-                </span>
               </div>
-            </div>
-          ) : (
-            <div style={{ display: 'contents' }}>
-              <div className="form-group">
-                <label>Temp Transcode Directory</label>
-                <input 
-                  type="text" 
-                  className="text-input" 
-                  value={settings.tempDir} 
-                  disabled 
-                  style={{ opacity: 0.8 }}
-                />
-                <span className="text-muted" style={{ fontSize: '11.5px', marginTop: '4px', display: 'block' }}>
-                  Default location: <code>C:\TempHBMG</code>
-                </span>
-              </div>
-              <div className="form-group">
-                <label>Replace Action Mode</label>
-                <div className="toggle-wrapper" style={{ borderBottom: '1px solid rgba(46,53,71,0.3)', paddingBottom: '10px' }}>
-                  <span className="toggle-label">Move transcoded file (deletes original)</span>
-                  <label className="toggle-switch">
-                    <input 
-                      type="checkbox" 
-                      checked={replaceAction === 'move'}
-                      onChange={(e) => setReplaceAction(e.target.checked ? 'move' : 'copy')}
-                      disabled={isTranscoding}
-                    />
-                    <span className="toggle-slider" />
-                  </label>
+
+              {/* Column 4: Job Concurrency & Actions */}
+              <div className="settings-col" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)', paddingLeft: '12px' }}>
+                <div className="section-title">
+                  <Play size={13} style={{ color: '#4caf50' }} />
+                  <span>Job Concurrency & Actions</span>
                 </div>
-                <div className="text-muted" style={{ fontSize: '11px', marginTop: '6px' }}>
-                  {replaceAction === 'move' ? (
-                    'Process: Transcodes flat file in C:\\TempHBMG\\Filename.EXT. After completion, deletes original source file and moves new file to source folder.'
+
+                <div className="form-group" style={{ marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', fontWeight: 'bold', marginBottom: '2px' }}>
+                    <span>Concurrent Engines</span>
+                    <span style={{ color: 'var(--accent)' }}>{enginesCount}</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="8" 
+                    className="custom-slider"
+                    style={{ width: '100%', margin: 0, height: '14px' }}
+                    value={enginesCount}
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value);
+                      setEnginesCount(n);
+                      if (isTranscoding) {
+                        window.api.setMaxEngines(n).catch(() => {});
+                      }
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+                  {isTranscoding ? (
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                        <button 
+                          className="btn btn-secondary btn-xs" 
+                          style={{ height: '26px', fontSize: '10px', background: 'rgba(217, 119, 6, 0.15)', border: '1px solid rgba(217, 119, 6, 0.3)', color: '#fbbf24' }} 
+                          onClick={handlePauseAll}
+                        >
+                          PAUSE ALL
+                        </button>
+                        <button 
+                          className="btn btn-secondary btn-xs" 
+                          style={{ height: '26px', fontSize: '10px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399' }} 
+                          onClick={handleResumeAll}
+                        >
+                          RESUME ALL
+                        </button>
+                      </div>
+                      <button 
+                        className="btn btn-danger btn-xs" 
+                        style={{ width: '100%', height: '26px', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} 
+                        onClick={handleStopTranscode}
+                      >
+                        <Square size={10} />
+                        STOP QUEUE
+                      </button>
+                    </>
                   ) : (
-                    'Process: Transcodes preserving folders in C:\\TempHBMG\\Folder\\Filename.EXT. Copies file to source folder to replace original, keeping temp structure.'
+                    <button 
+                      className="btn btn-primary btn-sm" 
+                      style={{ width: '100%', height: '28px', fontSize: '11.5px', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} 
+                      onClick={handleStartTranscode}
+                      disabled={scannedFiles.length === 0 || selectedPaths.size === 0}
+                    >
+                      <Play size={12} />
+                      START BATCH ({selectedPaths.size})
+                    </button>
+                  )}
+                  
+                  {scannedFiles.length > 0 && (
+                    <button 
+                      className="btn btn-secondary btn-xs" 
+                      style={{ width: '100%', height: '24px', fontSize: '10.5px' }}
+                      onClick={() => {
+                        setScannedFiles([]);
+                        setSelectedPaths(new Set());
+                        setScanDir('');
+                      }}
+                      disabled={isTranscoding}
+                    >
+                      <Trash2 size={10} />
+                      Clear Results
+                    </button>
                   )}
                 </div>
               </div>
             </div>
           )}
-        </>
-      )}
-          
-          {/* Directory Auto-Scan */}
-          <div 
-            className="section-title"
-            onClick={() => setAutoScanCollapsed(!autoScanCollapsed)}
-            style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Clock size={14} />
-              Periodic Scan
-            </div>
-            {autoScanCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-          </div>
-
-          {!autoScanCollapsed && (
-            <div style={{ background: 'rgba(28, 32, 42, 0.4)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '16px' }}>
-              <div className="form-group">
-                <label>Rescan Interval (Minutes)</label>
-                <input 
-                  type="number" 
-                  min="0" 
-                  className="text-input" 
-                  placeholder="0 to disable auto-scan"
-                  value={autoRescanInterval}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value);
-                    setAutoRescanInterval(isNaN(val) ? 0 : val);
-                  }}
-                  disabled={isTranscoding && autoRescanInterval > 0}
-                />
-                <span className="text-muted" style={{ fontSize: '10.5px', marginTop: '4px', display: 'block' }}>
-                  Set to 0 to disable periodic rescanning.
-                </span>
-              </div>
-
-              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
-                <input 
-                  type="checkbox" 
-                  id="autoAddToQueue" 
-                  className="custom-checkbox"
-                  checked={autoAddToQueue}
-                  onChange={(e) => setAutoAddToQueue(e.target.checked)}
-                />
-                <label htmlFor="autoAddToQueue" style={{ margin: 0, cursor: 'pointer', userSelect: 'none', fontSize: '11px', color: 'var(--text-bright)' }}>
-                  Automatically add new files to queue
-                </label>
-              </div>
-
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', borderTop: '1px solid rgba(46,53,71,0.3)', paddingTop: '8px' }}>
-                {autoRescanInterval > 0 && scanDir ? (
-                  <span style={{ color: 'var(--accent)' }}>Next scan in: <strong>{timeUntilNextScan}s</strong></span>
-                ) : (
-                  <span>Auto-scan disabled (interval is 0 or no folder scanned)</span>
-                )}
-              </div>
-            </div>
-          )}
-
-
-          
-          {/* Batch Apply Panel */}
-          <div 
-            className="section-title" 
-            style={{ marginTop: '12px', cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            onClick={() => setBatchApplyCollapsed(!batchApplyCollapsed)}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Sliders size={14} />
-              Batch Apply Settings
-            </div>
-            {batchApplyCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-          </div>
-          
-          {!batchApplyCollapsed && (
-            <div className="form-group" style={{ background: 'rgba(28, 32, 42, 0.4)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-              <div>
-                <label style={{ fontSize: '11px', marginBottom: '4px' }}>Video Codec</label>
-                <select 
-                  className="table-select" 
-                  style={{ width: '100%', maxWidth: '100%' }}
-                  value={batchVideoCodec}
-                  onChange={(e) => setBatchVideoCodec(e.target.value)}
-                >
-                  <option value="h264">H.264</option>
-                  <option value="h265">H.265</option>
-                </select>
-              </div>
-              
-              <div>
-                <label style={{ fontSize: '11px', marginBottom: '4px' }}>Quality (RF)</label>
-                <select 
-                  className="table-select" 
-                  style={{ width: '100%', maxWidth: '100%' }}
-                  value={batchQuality}
-                  onChange={(e) => setBatchQuality(parseInt(e.target.value))}
-                >
-                  {Array.from({ length: 21 }, (_, i) => 30 - i).map(q => (
-                    <option key={q} value={q}>RF {q}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '11px', marginBottom: '4px' }}>Frame Rate</label>
-                <select 
-                  className="table-select" 
-                  style={{ width: '100%', maxWidth: '100%' }}
-                  value={batchFramerate}
-                  onChange={(e) => setBatchFramerate(e.target.value)}
-                >
-                  <option value="constant">Constant</option>
-                  <option value="variable">Variable</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '11px', marginBottom: '4px' }}>Audio Codec</label>
-                <select 
-                  className="table-select" 
-                  style={{ width: '100%', maxWidth: '100%' }}
-                  value={batchAudioCodec}
-                  onChange={(e) => setBatchAudioCodec(e.target.value)}
-                >
-                  <option value="AAC">AAC</option>
-                  <option value="AC3">AC3</option>
-                  <option value="EAC3">EAC3</option>
-                  <option value="MP3">MP3</option>
-                  <option value="Copy">Copy</option>
-                </select>
-              </div>
-              {/* Audio Track Count & Subtitle Track Count Sliders */}
-              <div style={{ gridColumn: 'span 2', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span>Audio Sources:</span>
-                    <span style={{ color: 'var(--accent)' }}>{batchAudioCount}</span>
-                  </label>
-                  <input 
-                    type="range" 
-                    min="1" 
-                    max="10" 
-                    value={batchAudioCount} 
-                    onChange={(e) => setBatchAudioCount(parseInt(e.target.value))}
-                    style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span>Subtitle Sources:</span>
-                    <span style={{ color: '#2ec4b6' }}>{batchSubCount}</span>
-                  </label>
-                  <input 
-                    type="range" 
-                    min="1" 
-                    max="20" 
-                    value={batchSubCount} 
-                    onChange={(e) => setBatchSubCount(parseInt(e.target.value))}
-                    style={{ width: '100%', accentColor: '#2ec4b6', cursor: 'pointer' }}
-                  />
-                </div>
-              </div>
-
-              {/* Dynamic selectors for Audio Languages */}
-              <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)' }}>Audio Track Languages</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '8px', maxHeight: '110px', overflowY: 'auto', paddingRight: '4px' }}>
-                  {Array.from({ length: batchAudioCount }).map((_, idx) => (
-                    <div key={idx}>
-                      <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Slot {idx + 1}</label>
-                      <select 
-                        className="table-select" 
-                        style={{ width: '100%', fontSize: '10.5px', height: '24px', padding: '2px' }}
-                        value={batchAudioLangs[idx] || 'none'}
-                        onChange={(e) => {
-                          const updated = [...batchAudioLangs];
-                          updated[idx] = e.target.value;
-                          setBatchAudioLangs(updated);
-                        }}
-                      >
-                        <option value="none">None</option>
-                        <option value="eng">English (eng)</option>
-                        <option value="spa">Spanish (spa)</option>
-                        <option value="fre">French (fre)</option>
-                        <option value="ger">German (ger)</option>
-                        <option value="jpn">Japanese (jpn)</option>
-                        <option value="ita">Italian (ita)</option>
-                        <option value="chi">Chinese (chi)</option>
-                        <option value="kor">Korean (kor)</option>
-                        <option value="first">First Track</option>
-                      </select>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Dynamic selectors for Subtitle Languages */}
-              <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)' }}>Subtitle Track Languages</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '8px', maxHeight: '110px', overflowY: 'auto', paddingRight: '4px' }}>
-                  {Array.from({ length: batchSubCount }).map((_, idx) => (
-                    <div key={idx}>
-                      <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Slot {idx + 1}</label>
-                      <select 
-                        className="table-select" 
-                        style={{ width: '100%', fontSize: '10.5px', height: '24px', padding: '2px' }}
-                        value={batchSubLangs[idx] || 'none'}
-                        onChange={(e) => {
-                          const updated = [...batchSubLangs];
-                          updated[idx] = e.target.value;
-                          setBatchSubLangs(updated);
-                        }}
-                      >
-                        <option value="none">None</option>
-                        <option value="eng">English (eng)</option>
-                        <option value="spa">Spanish (spa)</option>
-                        <option value="fre">French (fre)</option>
-                        <option value="ger">German (ger)</option>
-                        <option value="jpn">Japanese (jpn)</option>
-                        <option value="ita">Italian (ita)</option>
-                        <option value="chi">Chinese (chi)</option>
-                        <option value="kor">Korean (kor)</option>
-                        <option value="first">First Track</option>
-                      </select>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <button 
-              type="button"
-              className="btn btn-outline-blue btn-sm"
-              style={{ width: '100%', marginTop: '6px' }}
-              onClick={handleApplyBatchConfig}
-              disabled={selectedPaths.size === 0}
-            >
-              Apply to Selected ({selectedPaths.size})
-            </button>
-          </div>
-          )}
-
-          {/* HandBrake Encoder Settings */}
-          <div 
-            className="section-title"
-            onClick={() => setPresetProfileCollapsed(!presetProfileCollapsed)}
-            style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Sliders size={14} />
-              HandBrake Preset Profile
-            </div>
-            {presetProfileCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-          </div>
-
-          {!presetProfileCollapsed && (
-            <div style={{ background: 'rgba(28, 32, 42, 0.4)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '6px' }}>
-              <div className="form-group">
-                <label>Selected Custom Preset File</label>
-                <div className="relative-dir-box" title={settings.handbrakePresetPath}>
-                  {settings.handbrakePresetPath ? settings.handbrakePresetPath : 'None selected (using Manual/Fallback)'}
-                </div>
-                {settings.handbrakePresetName && (
-                  <span className="text-muted" style={{ fontSize: '11px', marginTop: '4px', display: 'block' }}>
-                    Active Preset: <strong style={{ color: 'var(--accent)' }}>{settings.handbrakePresetName}</strong>
-                  </span>
-                )}
-                <span className="text-muted" style={{ fontSize: '10.5px', marginTop: '6px', display: 'block' }}>
-                  Import presets JSON files under the <strong>Settings</strong> window.
-                </span>
-              </div>
-            </div>
-          )}
-          
-          {/* Action Trigger Buttons */}
-          <div style={{ marginTop: 'auto', paddingTop: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {isTranscoding ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <button 
-                    className="btn btn-secondary" 
-                    style={{ padding: '8px', fontSize: '11px', background: 'rgba(217, 119, 6, 0.15)', border: '1px solid rgba(217, 119, 6, 0.3)', color: '#fbbf24' }} 
-                    onClick={handlePauseAll}
-                  >
-                    PAUSE ALL
-                  </button>
-                  <button 
-                    className="btn btn-secondary" 
-                    style={{ padding: '8px', fontSize: '11px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399' }} 
-                    onClick={handleResumeAll}
-                  >
-                    RESUME ALL
-                  </button>
-                </div>
-                <button 
-                  className="btn btn-primary" 
-                  style={{ width: '100%', padding: '10px', background: 'var(--accent)' }} 
-                  onClick={handleStartTranscode}
-                  disabled={scannedFiles.length === 0 || selectedPaths.size === 0}
-                >
-                  <Play size={16} />
-                  ADD TO QUEUE ({selectedPaths.size} files)
-                </button>
-                <button className="btn btn-danger" style={{ width: '100%', padding: '12px' }} onClick={handleStopTranscode}>
-                  <Square size={16} />
-                  STOP QUEUE
-                </button>
-              </div>
-            ) : (
-              <button 
-                className="btn btn-primary" 
-                style={{ width: '100%', padding: '12px', background: 'var(--accent)' }} 
-                onClick={handleStartTranscode}
-                disabled={scannedFiles.length === 0 || selectedPaths.size === 0}
-              >
-                <Play size={16} />
-                START BATCH TRANSCODE ({selectedPaths.size} files)
-              </button>
-            )}
-            
-            {scannedFiles.length > 0 && (
-              <button 
-                className="btn btn-secondary" 
-                onClick={() => {
-                  setScannedFiles([]);
-                  setSelectedPaths(new Set());
-                  setScanDir('');
-                }}
-              >
-                <Trash2 size={14} />
-                Clear scanned results
-              </button>
-            )}
-          </div>
         </section>
       </main>
 
