@@ -2010,7 +2010,7 @@ export default function App() {
                         disabled={isTranscoding}
                       />
                       <label htmlFor="postActionMove" style={{ fontSize: '11px', color: 'var(--text-bright)', cursor: 'pointer', margin: 0 }}>
-                        Move completed file to source folder
+                        Replace Original file
                       </label>
                     </div>
                   </>
@@ -2037,7 +2037,7 @@ export default function App() {
                         disabled={isTranscoding}
                       />
                       <label htmlFor="replaceActionMove" style={{ fontSize: '11px', color: 'var(--text-bright)', cursor: 'pointer', margin: 0 }}>
-                        Move transcoded file (deletes original)
+                        Replace Original file
                       </label>
                     </div>
                   </div>
