@@ -1972,8 +1972,7 @@ export default function App() {
                     disabled={isTranscoding}
                   >
                     <option value="transcodeDir">Option #1: Transcode to Destination Folder</option>
-                    <option value="inPlace">Option #2: Transcode in Place (Direct Swap)</option>
-                    <option value="safeRename">Option #3: Safe Rename in Place (Recommended)</option>
+                    <option value="replace">Option #2: Replace Source Files (Temp Directory)</option>
                   </select>
                 </div>
 
