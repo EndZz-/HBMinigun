@@ -214,6 +214,7 @@ export default function App() {
   // Resizing states for bottom queue drawer
   const [queueHeight, setQueueHeight] = useState(220);
   const [isResizingQueue, setIsResizingQueue] = useState(false);
+  const [queueCollapsed, setQueueCollapsed] = useState(true);
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -1018,6 +1019,8 @@ export default function App() {
     // Gathers selected files
     const filesToProcess = scannedFiles.filter(f => selectedPaths.has(f.fullPath));
 
+    setQueueCollapsed(false);
+
     const newQueueItems = filesToProcess.map(f => ({
       file: f,
       percent: 0,
@@ -1427,7 +1430,7 @@ export default function App() {
   // Wait, let's see if we need it. Let's add a file selection dialog.
 
   return (
-    <div className="app-container" style={{ gridTemplateRows: `56px 1fr ${queueHeight}px` }}>
+    <div className="app-container" style={{ gridTemplateRows: `56px 1fr ${queueCollapsed ? 32 : queueHeight}px` }}>
       {/* Header */}
       <header className="app-header">
         <div className="logo-section">
@@ -2291,139 +2294,158 @@ export default function App() {
 
       {/* Bottom Panel: Queue Drawer */}
       <footer className="bottom-drawer" style={{ position: 'relative' }}>
+        {!queueCollapsed && (
+          <div 
+            className={`resizer-bar ${isResizingQueue ? 'dragging' : ''}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsResizingQueue(true);
+            }}
+          />
+        )}
         <div 
-          className={`resizer-bar ${isResizingQueue ? 'dragging' : ''}`}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            setIsResizingQueue(true);
-          }}
-        />
-        <div className="drawer-header">
-          <div className="drawer-title">
+          className="drawer-header"
+          onClick={() => setQueueCollapsed(!queueCollapsed)}
+          style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '32px', padding: '0 16px' }}
+        >
+          <div className="drawer-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Loader2 size={12} className={isTranscoding ? 'animate-spin' : ''} style={{ color: isTranscoding ? 'var(--accent)' : 'var(--text-muted)' }} />
-            Active Transcode Queue {queue.length > 0 && `(${queue.filter(i => i.status === 'Completed').length} / ${queue.length} completed)`}
+            <span>Active Transcode Queue {queue.length > 0 && `(${queue.filter(i => i.status === 'Completed').length} / ${queue.length} completed)`}</span>
           </div>
-          {queue.length > 0 && (
-            <button className="btn btn-secondary btn-sm" onClick={() => setQueue([])} disabled={isTranscoding} style={{ height: '24px', padding: '0 8px', fontSize: '10.5px' }}>
-              Clear Queue
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {queue.length > 0 && (
+              <button 
+                className="btn btn-secondary btn-sm" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setQueue([]);
+                }} 
+                disabled={isTranscoding} 
+                style={{ height: '20px', padding: '0 8px', fontSize: '10px', display: 'flex', alignItems: 'center' }}
+              >
+                Clear Queue
+              </button>
+            )}
+            {queueCollapsed ? <ChevronRight size={14} style={{ transform: 'rotate(-90deg)', color: 'var(--text-muted)' }} /> : <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />}
+          </div>
         </div>
-        <div className="drawer-content">
-          {/* Active Job list */}
-          <div className="queue-list-wrapper">
-            {queue.length === 0 ? (
-              <div className="queue-empty">
-                <FileVideo size={24} />
-                No files in the transcoding queue. Select files and click "Start Batch Transcode".
-              </div>
-            ) : (
-              <div className="queue-items-grid">
-                {queue.map((item, idx) => (
-                  <div 
-                    key={idx} 
-                    className={`queue-item-card ${item.status === 'Processing' ? 'processing' : ''}`}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => {
-                      setActiveConsoleFile(item.file);
-                      setActiveConsoleLog(consoleLogsRef.current[item.file.fullPath] || 'No logs received for this file yet.');
-                    }}
-                  >
-                    <div className="queue-item-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span className="queue-item-name" style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginRight: '12px' }}>{item.file.name}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span className={`queue-item-status ${item.status.toLowerCase()}`}>{item.status}</span>
-                        <div className="queue-item-actions" style={{ display: 'flex', gap: '4px' }}>
-                          {item.status === 'Processing' && (
+        {!queueCollapsed && (
+          <div className="drawer-content">
+            {/* Active Job list */}
+            <div className="queue-list-wrapper">
+              {queue.length === 0 ? (
+                <div className="queue-empty">
+                  <FileVideo size={24} />
+                  No files in the transcoding queue. Select files and click "Start Batch Transcode".
+                </div>
+              ) : (
+                <div className="queue-items-grid">
+                  {queue.map((item, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`queue-item-card ${item.status === 'Processing' ? 'processing' : ''}`}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => {
+                        setActiveConsoleFile(item.file);
+                        setActiveConsoleLog(consoleLogsRef.current[item.file.fullPath] || 'No logs received for this file yet.');
+                      }}
+                    >
+                      <div className="queue-item-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span className="queue-item-name" style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginRight: '12px' }}>{item.file.name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className={`queue-item-status ${item.status.toLowerCase()}`}>{item.status}</span>
+                          <div className="queue-item-actions" style={{ display: 'flex', gap: '4px' }}>
+                            {item.status === 'Processing' && (
+                              <button 
+                                className="btn btn-xs" 
+                                style={{ padding: '2px 6px', fontSize: '10px', height: '20px', background: 'rgba(217, 119, 6, 0.2)', border: '1px solid rgba(217, 119, 6, 0.4)', color: '#fbbf24', cursor: 'pointer' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePauseJob(item.file.fullPath);
+                                }}
+                                title="Pause"
+                              >
+                                Pause
+                              </button>
+                            )}
+                            {item.status === 'Paused' && (
+                              <button 
+                                className="btn btn-xs" 
+                                style={{ padding: '2px 6px', fontSize: '10px', height: '20px', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#34d399', cursor: 'pointer' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleResumeJob(item.file.fullPath);
+                                }}
+                                title="Resume"
+                              >
+                                Resume
+                              </button>
+                            )}
+                            {(item.status === 'Processing' || item.status === 'Paused') && (
+                              <button 
+                                className="btn btn-xs" 
+                                style={{ padding: '2px 6px', fontSize: '10px', height: '20px', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#f87171', cursor: 'pointer' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleStopJob(item.file.fullPath);
+                                }}
+                                title="Stop/Cancel"
+                              >
+                                Stop
+                              </button>
+                            )}
                             <button 
                               className="btn btn-xs" 
-                              style={{ padding: '2px 6px', fontSize: '10px', height: '20px', background: 'rgba(217, 119, 6, 0.2)', border: '1px solid rgba(217, 119, 6, 0.4)', color: '#fbbf24', cursor: 'pointer' }}
+                              style={{ padding: '2px 6px', fontSize: '10px', height: '20px', background: 'rgba(150, 150, 150, 0.1)', border: '1px solid rgba(150, 150, 150, 0.2)', color: 'var(--text-muted)', cursor: 'pointer' }}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handlePauseJob(item.file.fullPath);
+                                handleRemoveFromQueue(item.file.fullPath);
                               }}
-                              title="Pause"
+                              title="Remove from queue"
                             >
-                              Pause
+                              Remove
                             </button>
-                          )}
-                          {item.status === 'Paused' && (
-                            <button 
-                              className="btn btn-xs" 
-                              style={{ padding: '2px 6px', fontSize: '10px', height: '20px', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#34d399', cursor: 'pointer' }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleResumeJob(item.file.fullPath);
-                              }}
-                              title="Resume"
-                            >
-                              Resume
-                            </button>
-                          )}
-                          {(item.status === 'Processing' || item.status === 'Paused') && (
-                            <button 
-                              className="btn btn-xs" 
-                              style={{ padding: '2px 6px', fontSize: '10px', height: '20px', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#f87171', cursor: 'pointer' }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStopJob(item.file.fullPath);
-                              }}
-                              title="Stop/Cancel"
-                            >
-                              Stop
-                            </button>
-                          )}
-                          <button 
-                            className="btn btn-xs" 
-                            style={{ padding: '2px 6px', fontSize: '10px', height: '20px', background: 'rgba(150, 150, 150, 0.1)', border: '1px solid rgba(150, 150, 150, 0.2)', color: 'var(--text-muted)', cursor: 'pointer' }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveFromQueue(item.file.fullPath);
-                            }}
-                            title="Remove from queue"
-                          >
-                            Remove
-                          </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="progress-track">
-                      <div 
-                        className={`progress-bar ${item.status === 'Completed' ? 'success' : item.status === 'Failed' ? 'danger' : ''}`} 
-                        style={{ width: `${item.percent}%` }} 
-                      />
-                    </div>
+                      <div className="progress-track">
+                        <div 
+                          className={`progress-bar ${item.status === 'Completed' ? 'success' : item.status === 'Failed' ? 'danger' : ''}`} 
+                          style={{ width: `${item.percent}%` }} 
+                        />
+                      </div>
 
-                    <div className="queue-item-stats">
-                      <span>Progress: <strong>{item.percent.toFixed(1)}%</strong></span>
-                      {item.status === 'Processing' && (
-                        <>
-                          <span>Speed: <strong>{item.speed.toFixed(1)} FPS</strong> (Avg: {item.avgSpeed.toFixed(1)})</span>
-                          <span>ETA: <strong>{item.eta}</strong></span>
-                        </>
-                      )}
-                      {item.status === 'Failed' && (
-                        <span style={{ color: 'var(--plex-red-text)' }}>Error: {item.error || 'Unknown Error'}</span>
-                      )}
+                      <div className="queue-item-stats">
+                        <span>Progress: <strong>{item.percent.toFixed(1)}%</strong></span>
+                        {item.status === 'Processing' && (
+                          <>
+                            <span>Speed: <strong>{item.speed.toFixed(1)} FPS</strong> (Avg: {item.avgSpeed.toFixed(1)})</span>
+                            <span>ETA: <strong>{item.eta}</strong></span>
+                          </>
+                        )}
+                        {item.status === 'Failed' && (
+                          <span style={{ color: 'var(--plex-red-text)' }}>Error: {item.error || 'Unknown Error'}</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Job terminal console output */}
+            <div className="console-log-panel">
+              <div className="console-header">
+                Console Logs: {activeConsoleFile ? activeConsoleFile.name : 'Select job to view'}
               </div>
-            )}
-          </div>
-
-          {/* Job terminal console output */}
-          <div className="console-log-panel">
-            <div className="console-header">
-              Console Logs: {activeConsoleFile ? activeConsoleFile.name : 'Select job to view'}
-            </div>
-            <div className="console-output">
-              {activeConsoleLog}
-              <div ref={consoleEndRef} />
+              <div className="console-output">
+                {activeConsoleLog}
+                <div ref={consoleEndRef} />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </footer>
 
       {/* Settings Modal */}

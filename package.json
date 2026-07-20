@@ -1,7 +1,7 @@
 {
   "name": "hbminigun",
   "private": true,
-  "version": "0.7.4",
+  "version": "0.7.5",
   "main": "main.js",
   "scripts": {
     "dev": "node dev.js",
