@@ -3466,7 +3466,7 @@ function SyncModal({ isOpen, syncItems, setSyncItems, onClose, onExecute, isSync
           )}
         </div>
 
-        <div className="modal-body" style={{ flex: 1, padding: 0, overflowY: 'auto', background: '#0e1117' }}>
+        <div className="modal-body" style={{ flex: 1, padding: 0, overflowY: 'auto', background: '#0e1117', maxHeight: 'none' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
             <thead>
               <tr style={{ background: 'rgba(20, 23, 29, 0.6)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 1 }}>
