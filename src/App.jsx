@@ -1022,6 +1022,7 @@ export default function App() {
 
     setQueueCollapsed(false);
     setMediaLibraryCollapsed(true);
+    setSettingsPanelCollapsed(true);
 
     const newQueueItems = filesToProcess.map(f => ({
       file: f,
