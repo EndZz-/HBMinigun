@@ -2009,6 +2009,9 @@ export default function App() {
                         onChange={(e) => setPostAction(e.target.checked ? 'move' : 'none')}
                         disabled={isTranscoding}
                       />
+                      <label htmlFor="postActionMove" style={{ fontSize: '11px', color: 'var(--text-bright)', cursor: 'pointer', margin: 0 }}>
+                        Replace Original file
+                      </label>
                     </div>
 
                     <button 
