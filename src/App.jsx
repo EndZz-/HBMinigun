@@ -1355,54 +1355,62 @@ export default function App() {
   };
 
   const estimateTranscodedSize = (file, config) => {
-    const rf = config.quality || 20;
+    const rf    = config.quality    || 20;
     const codec = config.videoCodec || 'h264';
-    
-    // 1. Determine duration T (in seconds)
+
+    // --- Extract the 5 source variables ---
+
+    // S_orig: original size in MB
+    const S_orig = (file.sizeBytes || 0) / (1024 * 1024);
+
+    // T: duration in seconds (fall back to bitrate-derived estimate)
     let T = file.duration;
-    if (!T || isNaN(T)) {
-      // Estimate duration assuming the original file has a bitrate of ~8000 kbps
+    if (!T || isNaN(T) || T <= 0) {
       T = (file.sizeBytes * 8) / (8000 * 1000);
     }
-    
-    // 2. Determine base video and audio bitrates based on resolution height
-    let baseBv = 8000; // default 1080p
-    let baseBa = 192;
-    
-    const height = file.height || 1080;
-    if (height >= 2160) {
-      baseBv = 16000;  // realistic H.264 4K target at RF22; RF scaling brings it to ~20k at RF20
-      baseBa = 256;
-    } else if (height <= 720) {
-      baseBv = 4000;
-      baseBa = 128;
-    }
-    
-    // 3. Adjust video bitrate based on RF quality (every 6 steps halves/doubles)
-    const rfDiff = 22 - rf; // 22 is reference RF for baseBv
-    let targetBv = baseBv * Math.pow(2, rfDiff / 6);
-    
-    // 4. Adjust video bitrate based on codec efficiency (H.265 is ~40% more efficient)
-    if (codec === 'h265') {
-      targetBv *= 0.6;
-    }
-    
-    // 5. Adjust audio bitrate based on codec choice
-    let targetBa = baseBa;
-    if (config.audioCodec === 'MP3') {
-      targetBa = 128;
-    } else if (config.audioCodec === 'AC3' || config.audioCodec === 'EAC3') {
-      targetBa = 384;
-    }
-    
-    // 6. Apply formula: S = ((B_v + B_a) * T) / (8 * 1024) (S in MB)
-    const S = ((targetBv + targetBa) * T) / (8 * 1024);
-    
-    // Convert Megabytes (MB) back to bytes
-    const estimatedSizeBytes = S * 1024 * 1024;
-    
-    // Clamp estimated size between 10% and 400% of the original size
-    return Math.max(file.sizeBytes * 0.10, Math.min(file.sizeBytes * 4.0, estimatedSizeBytes));
+
+    // H_orig: source video height
+    const H_orig = file.height || 1080;
+
+    // A_tracks: number of non-none audio slots being kept
+    const audioSources = config.audioSources || [
+      config.audioSource1 || 'none',
+      config.audioSource2 || 'none'
+    ];
+    const A_tracks = Math.max(1, audioSources.filter(s => s && s !== 'none').length);
+
+    // --- Variable 1: Baseline original bitrate (kbps) ---
+    // B_orig = (S_orig * 8 * 1024) / T
+    const B_orig = (S_orig * 8 * 1024) / T;
+
+    // --- Variable 2: Resolution-based base video bitrate ---
+    let B_base;
+    if (H_orig >= 2160)     B_base = 45000;
+    else if (H_orig >= 1080) B_base = 8000;
+    else                     B_base = 4000;
+
+    // --- Variable 3: Target video bitrate with RF scaling and codec efficiency ---
+    const E_codec = codec === 'h265' ? 0.6 : 1.0;
+    let B_v = B_base * Math.pow(2, (22 - rf) / 6) * E_codec;
+
+    // Safety cap: B_v must never exceed 120% of the original bitrate
+    B_v = Math.min(B_v, B_orig * 1.2);
+
+    // --- Variable 4: Target audio bitrate ---
+    let perTrackBa;
+    if (config.audioCodec === 'MP3')                              perTrackBa = 128;
+    else if (config.audioCodec === 'AC3' || config.audioCodec === 'EAC3') perTrackBa = 384;
+    else                                                           perTrackBa = 192; // AAC / default
+    const B_a = perTrackBa * A_tracks;
+
+    // --- Variable 5: Final predicted size ---
+    // S_pred (MB) = ((B_v + B_a) * T) / (8 * 1024)
+    let S_pred = ((B_v + B_a) * T) / (8 * 1024);
+
+    // Guardrail: never predict more than 125% of the original size
+    S_pred = Math.min(S_pred, S_orig * 1.25);
+
+    return S_pred * 1024 * 1024; // return bytes
   };
 
   // Modal actions
