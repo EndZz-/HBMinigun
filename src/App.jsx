@@ -3112,6 +3112,10 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
   const [sampleUri, setSampleUri] = useState(null);
   const [refUri, setRefUri] = useState(null);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [viewMode, setViewMode] = useState('sidebyside'); // 'sidebyside' | 'slider'
+  const [sliderPos, setSliderPos] = useState(50); // 0-100 percent
+  const sliderContainerRef = useRef(null);
+  const isDraggingSlider = useRef(false);
 
   const refVideoRef = useRef(null);
   const sampleVideoRef = useRef(null);
@@ -3165,6 +3169,25 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
     if (refVideoRef.current && sampleVideoRef.current && refVideoRef.current.playbackRate !== sampleVideoRef.current.playbackRate) {
       refVideoRef.current.playbackRate = sampleVideoRef.current.playbackRate;
     }
+  };
+
+  // Comparison slider drag handlers
+  const handleSliderMouseDown = (e) => {
+    e.preventDefault();
+    isDraggingSlider.current = true;
+  };
+  const handleSliderMouseMove = (e) => {
+    if (!isDraggingSlider.current || !sliderContainerRef.current) return;
+    const rect = sliderContainerRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    setSliderPos((x / rect.width) * 100);
+  };
+  const handleSliderMouseUp = () => { isDraggingSlider.current = false; };
+  const handleSliderTouchMove = (e) => {
+    if (!sliderContainerRef.current) return;
+    const rect = sliderContainerRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.touches[0].clientX - rect.left, rect.width));
+    setSliderPos((x / rect.width) * 100);
   };
 
   const formatTime = (secs) => {
@@ -3229,6 +3252,27 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
             Quality Inspector & Sample Preview
           </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {/* View mode toggle — only shown when samples are loaded */}
+            {refUri && sampleUri && (
+              <div style={{ display: 'flex', background: 'rgba(255,255,255,0.06)', borderRadius: '6px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('sidebyside')}
+                  title="Side by Side"
+                  style={{ padding: '4px 10px', fontSize: '11px', fontWeight: '600', border: 'none', cursor: 'pointer', background: viewMode === 'sidebyside' ? 'var(--accent)' : 'transparent', color: viewMode === 'sidebyside' ? '#fff' : 'var(--text-muted)', transition: 'background 0.15s' }}
+                >
+                  Side by Side
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('slider')}
+                  title="Comparison Slider"
+                  style={{ padding: '4px 10px', fontSize: '11px', fontWeight: '600', border: 'none', cursor: 'pointer', background: viewMode === 'slider' ? 'var(--accent)' : 'transparent', color: viewMode === 'slider' ? '#fff' : 'var(--text-muted)', transition: 'background 0.15s' }}
+                >
+                  Comparison Slider
+                </button>
+              </div>
+            )}
             <button 
               type="button"
               className="modal-close-btn" 
@@ -3265,152 +3309,91 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
             Compare frame details side-by-side to find the optimal RF target. Choose a timestamp on the timeline, set your RF, and click Generate.
           </div>
 
-          {/* Screen Display Row - Flexes and stretches both columns to take all vertical space when maximized */}
-          <div 
-            style={isMaximized ? { 
-              display: 'flex', 
-              flexDirection: 'row', 
-              gap: '20px', 
-              flex: 1, 
-              minHeight: '0',
-              alignItems: 'stretch'
-            } : { 
-              display: 'flex', 
-              flexDirection: 'row', 
-              gap: '20px',
-              alignItems: 'stretch'
-            }}
-          >
-            {/* Left Screen: Original Reference */}
-            <div 
-              style={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                gap: '8px', 
-                minHeight: '0',
-                flex: 1
-              }}
-            >
-              <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--plex-green-text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Original Video Reference (Source)
+          {/* Screen Display Row */}
+          {viewMode === 'sidebyside' ? (
+            <div style={isMaximized ? { display: 'flex', flexDirection: 'row', gap: '20px', flex: 1, minHeight: '0', alignItems: 'stretch' } : { display: 'flex', flexDirection: 'row', gap: '20px', alignItems: 'stretch' }}>
+              {/* Left: Original */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minHeight: '0', flex: 1 }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--plex-green-text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Original (Source)</div>
+                <div style={isMaximized ? { flex: 1, minHeight: '0', background: '#0c0e12', border: '1px solid var(--border)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' } : { aspectRatio: '16/9', background: '#0c0e12', border: '1px solid var(--border)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative', width: '100%' }}>
+                  {isGenerating && (<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}><Loader2 className="animate-spin" size={24} style={{ color: 'var(--plex-green-text)' }} /><span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Extracting reference...</span></div>)}
+                  {!isGenerating && !refUri && (<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Click Generate Preview to load</span>)}
+                  {refUri && !isGenerating && (<video ref={refVideoRef} src={refUri} autoPlay loop muted controls onPlay={handleRefPlay} onPause={handleRefPause} onSeeked={handleRefSeek} onRateChange={handleRefRateChange} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />)}
+                </div>
               </div>
-              <div 
-                style={isMaximized ? { 
-                  flex: 1,
-                  minHeight: '0', 
-                  background: '#0c0e12', 
-                  border: '1px solid var(--border)', 
-                  borderRadius: '8px', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  position: 'relative'
-                } : { 
-                  aspectRatio: '16/9',
-                  background: '#0c0e12', 
-                  border: '1px solid var(--border)', 
-                  borderRadius: '8px', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  position: 'relative',
-                  width: '100%'
-                }}
-              >
-                {isGenerating && (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', zIndex: 10 }}>
-                    <Loader2 className="animate-spin" size={24} style={{ color: 'var(--plex-green-text)' }} />
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Extracting reference...</span>
-                  </div>
-                )}
-                {!isGenerating && !refUri && (
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Click Generate Preview to load</span>
-                )}
-                {refUri && !isGenerating && (
-                  <video 
-                    ref={refVideoRef}
-                    src={refUri} 
-                    autoPlay 
-                    loop 
-                    muted 
-                    controls 
-                    onPlay={handleRefPlay}
-                    onPause={handleRefPause}
-                    onSeeked={handleRefSeek}
-                    onRateChange={handleRefRateChange}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  />
-                )}
+              {/* Right: Transcoded */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minHeight: '0', flex: 1 }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Transcoded (RF {rf})</div>
+                <div style={isMaximized ? { flex: 1, minHeight: '0', background: '#0c0e12', border: '1px solid var(--border)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' } : { aspectRatio: '16/9', background: '#0c0e12', border: '1px solid var(--border)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative', width: '100%' }}>
+                  {isGenerating && (<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}><Loader2 className="animate-spin" size={24} style={{ color: 'var(--accent)' }} /><span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Encoding preview...</span></div>)}
+                  {!isGenerating && !sampleUri && (<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Click Generate Preview to load</span>)}
+                  {sampleUri && !isGenerating && (<video ref={sampleVideoRef} src={sampleUri} autoPlay loop muted controls onPlay={handleSamplePlay} onPause={handleSamplePause} onSeeked={handleSampleSeek} onRateChange={handleSampleRateChange} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />)}
+                </div>
               </div>
             </div>
-
-            {/* Right Screen: Transcoded Sample */}
-            <div 
-              style={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                gap: '8px', 
-                minHeight: '0',
-                flex: 1
-              }}
-            >
-              <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Transcoded Preview (RF {rf})
+          ) : (
+            /* Comparison Slider Mode */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: isMaximized ? 1 : 'none', minHeight: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                <span style={{ color: 'var(--plex-green-text)' }}>◄ Original (Source)</span>
+                <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>{Math.round(sliderPos)}% / {Math.round(100 - sliderPos)}%</span>
+                <span style={{ color: 'var(--accent)' }}>Transcoded (RF {rf}) ►</span>
               </div>
-              <div 
-                style={isMaximized ? { 
-                  flex: 1,
-                  minHeight: '0', 
-                  background: '#0c0e12', 
-                  border: '1px solid var(--border)', 
-                  borderRadius: '8px', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  position: 'relative'
-                } : { 
-                  aspectRatio: '16/9',
-                  background: '#0c0e12', 
-                  border: '1px solid var(--border)', 
-                  borderRadius: '8px', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  position: 'relative',
-                  width: '100%'
-                }}
+              <div
+                ref={sliderContainerRef}
+                onMouseMove={handleSliderMouseMove}
+                onMouseUp={handleSliderMouseUp}
+                onMouseLeave={handleSliderMouseUp}
+                onTouchMove={handleSliderTouchMove}
+                onTouchEnd={handleSliderMouseUp}
+                style={isMaximized
+                  ? { flex: 1, minHeight: 0, position: 'relative', borderRadius: '8px', overflow: 'hidden', background: '#0c0e12', border: '1px solid var(--border)', cursor: 'ew-resize' }
+                  : { aspectRatio: '16/9', width: '100%', position: 'relative', borderRadius: '8px', overflow: 'hidden', background: '#0c0e12', border: '1px solid var(--border)', cursor: 'ew-resize' }
+                }
               >
+                {(!refUri || !sampleUri) && !isGenerating && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Generate a preview first</span>
+                  </div>
+                )}
                 {isGenerating && (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', zIndex: 10 }}>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                     <Loader2 className="animate-spin" size={24} style={{ color: 'var(--accent)' }} />
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Encoding preview...</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Generating samples...</span>
                   </div>
                 )}
-                {!isGenerating && !sampleUri && (
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Click Generate Preview to load</span>
-                )}
+                {/* Transcoded underneath (full width) */}
                 {sampleUri && !isGenerating && (
-                  <video 
-                    ref={sampleVideoRef}
-                    src={sampleUri} 
-                    autoPlay 
-                    loop 
-                    muted 
-                    controls 
-                    onPlay={handleSamplePlay}
-                    onPause={handleSamplePause}
-                    onSeeked={handleSampleSeek}
-                    onRateChange={handleSampleRateChange}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  <video ref={sampleVideoRef} src={sampleUri} autoPlay loop muted onPlay={handleSamplePlay} onPause={handleSamplePause} onSeeked={handleSampleSeek} onRateChange={handleSampleRateChange}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
                   />
+                )}
+                {/* Original on top, clipped to left side of slider */}
+                {refUri && !isGenerating && (
+                  <video ref={refVideoRef} src={refUri} autoPlay loop muted onPlay={handleRefPlay} onPause={handleRefPause} onSeeked={handleRefSeek} onRateChange={handleRefRateChange}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
+                  />
+                )}
+                {/* Slider handle */}
+                {refUri && sampleUri && !isGenerating && (
+                  <div
+                    onMouseDown={handleSliderMouseDown}
+                    onTouchStart={handleSliderMouseDown}
+                    style={{ position: 'absolute', top: 0, bottom: 0, left: `${sliderPos}%`, transform: 'translateX(-50%)', width: '3px', background: '#fff', cursor: 'ew-resize', zIndex: 10 }}
+                  >
+                    {/* Drag knob */}
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '32px', height: '32px', borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.5)', cursor: 'ew-resize' }}>
+                      <span style={{ fontSize: '14px', color: '#333', userSelect: 'none', letterSpacing: '-2px' }}>&#8942;&#8942;</span>
+                    </div>
+                    {/* Left label */}
+                    <div style={{ position: 'absolute', top: '12px', right: 'calc(100% + 8px)', fontSize: '10px', fontWeight: '700', color: 'var(--plex-green-text)', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>ORIG</div>
+                    {/* Right label */}
+                    <div style={{ position: 'absolute', top: '12px', left: 'calc(100% + 8px)', fontSize: '10px', fontWeight: '700', color: 'var(--accent)', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>RF {rf}</div>
+                  </div>
                 )}
               </div>
             </div>
-          </div>
+          )}
 
           {/* Controls Bar */}
           <div style={{ background: 'rgba(28, 32, 42, 0.4)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px' }}>
