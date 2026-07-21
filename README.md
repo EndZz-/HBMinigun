@@ -31,6 +31,8 @@
 ## ✨ Features
 
 ### 🎬 Batch Transcoding
+<img width="2879" height="1628" alt="image" src="https://github.com/user-attachments/assets/8d186503-87b3-4ad4-837c-17a2b8f51525" />
+
 - Scan entire directories and subdirectories for compatible video files
 - Per-file configuration for codec, quality (RF), frame rate, audio tracks, and subtitles
 - **Batch Apply panel** — apply video codec, quality, frame rate, audio codec, and per-slot audio/subtitle language settings across all selected files in one click
@@ -39,6 +41,8 @@
 - Auto-selects incompatible files for transcoding on scan
 
 ### ⚙️ Encoding Options
+<img width="2879" height="360" alt="image" src="https://github.com/user-attachments/assets/84ed84d2-26c1-4fbc-a0f2-723b80864885" />
+
 - **Video:** H.264 or H.265 with configurable RF quality (10–30)
 - **Frame Rate:** Constant or Variable
 - **Audio:** AAC, AC3, EAC3, MP3, or Copy — up to 10 tracks with per-slot language matching
@@ -52,6 +56,8 @@
 - Extracted SRT files are written to `C:\TempHBMG\subtitles\` and cleaned up automatically
 
 ### 🔄 Live Queue Management
+<img width="2879" height="1183" alt="image" src="https://github.com/user-attachments/assets/9d2f8277-dffc-4444-83d8-16a6481575f4" />
+
 - Start a transcode queue and **add more files while it's running** — no need to stop and restart
 - **Scan new folders mid-queue** and merge results into the current scan list without losing progress
 - **Refresh** the current scan directory at any time to pick up newly added files
@@ -114,29 +120,10 @@ Compare your original video against a sample transcode **before committing** to 
 
 > **HandBrakeCLI, MediaInfo, and FFmpeg are all bundled inside the app.** You do not need to install anything separately.
 
-**Install location:** `C:\Users\<you>\AppData\Local\Programs\hbminigun\`
+**Install location:** `C:\Users\%USERNAME%\AppData\Local\Programs\hbminigun\`
 
 ---
 
-## 🛠️ Build from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/EndZz-/HBMinigun.git
-cd HBMinigun
-
-# Install dependencies
-npm install
-
-# Run in development mode (Vite + Electron)
-npm run dev
-
-# Build the production installer
-npm run build        # Builds Vite frontend
-npm run package      # Packages into a Windows installer
-```
-
----
 
 ## 📂 Temp Directory Structure
 
