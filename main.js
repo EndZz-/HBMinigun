@@ -336,10 +336,10 @@ function parseMediaInfo(file, data) {
   for (const track of tracks) {
     if (track['@type'] === 'General') {
       if (track.Duration) {
-        // MediaInfo always returns Duration in milliseconds
+        // MediaInfo --Output=JSON returns Duration in seconds (not ms)
         const dur = parseFloat(track.Duration);
         if (!isNaN(dur)) {
-          result.duration = dur / 1000;
+          result.duration = dur;
         }
       }
     } else if (track['@type'] === 'Video') {
@@ -354,7 +354,7 @@ function parseMediaInfo(file, data) {
       if (track.Duration && !result.duration) {
         const dur = parseFloat(track.Duration);
         if (!isNaN(dur)) {
-          result.duration = dur / 1000;
+          result.duration = dur;
         }
       }
     } else if (track['@type'] === 'Audio') {
