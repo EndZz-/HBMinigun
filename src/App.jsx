@@ -1372,6 +1372,10 @@ export default function App() {
     // H_orig: source video height
     const H_orig = file.height || 1080;
 
+    // H_target: the height we're actually encoding to (respects resolution dropdown)
+    const resolutionHeightMap = { '2160p': 2160, '1080p': 1080, '720p': 720 };
+    const H_target = resolutionHeightMap[config.resolution] || H_orig;
+
     // A_tracks: number of non-none audio slots being kept
     const audioSources = config.audioSources || [
       config.audioSource1 || 'none',
@@ -1383,11 +1387,11 @@ export default function App() {
     // B_orig = (S_orig * 8 * 1024) / T
     const B_orig = (S_orig * 8 * 1024) / T;
 
-    // --- Variable 2: Resolution-based base video bitrate ---
+    // --- Variable 2: Resolution-based base video bitrate (uses TARGET height) ---
     let B_base;
-    if (H_orig >= 2160)     B_base = 45000;
-    else if (H_orig >= 1080) B_base = 8000;
-    else                     B_base = 4000;
+    if (H_target >= 2160)      B_base = 45000;
+    else if (H_target >= 1080) B_base = 8000;
+    else                        B_base = 4000;
 
     // --- Variable 3: Target video bitrate with RF scaling and codec efficiency ---
     const E_codec = codec === 'h265' ? 0.6 : 1.0;
