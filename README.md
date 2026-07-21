@@ -98,6 +98,9 @@ C:\TempHBMG\
 - Pause / Resume all engines at once
 
 ### 🔍 Interactive Quality Inspector
+<img width="2848" height="1654" alt="image" src="https://github.com/user-attachments/assets/9d71447a-dd7e-41c3-98cd-97da8174c1b3" />
+<img width="2847" height="1642" alt="image" src="https://github.com/user-attachments/assets/be771bab-d3f3-433b-88ab-7f65b5d0d731" />
+
 Compare your original video against a sample transcode **before committing** to a full encode:
 - Scrub to any timestamp in the source file
 - Choose codec and RF value for the sample
