@@ -975,6 +975,20 @@ async function processNextInQueue(hbPath, settings) {
         args.push('--vfr');
       }
 
+      // Resolution scaling (only applied when not 'original')
+      // --maxWidth/--maxHeight with --loose-anamorphic preserves aspect ratio
+      const resolutionMap = {
+        '2160p': { w: 3840, h: 2160 },
+        '1080p': { w: 1920, h: 1080 },
+        '720p':  { w: 1280, h: 720  }
+      };
+      const resDef = resolutionMap[fileConfig.resolution];
+      if (resDef) {
+        args.push('--maxWidth',  resDef.w.toString());
+        args.push('--maxHeight', resDef.h.toString());
+        args.push('--loose-anamorphic');
+      }
+
       // Audio options
       let selectedAudioTracks = [];
       if (fileConfig.audioSources && Array.isArray(fileConfig.audioSources)) {

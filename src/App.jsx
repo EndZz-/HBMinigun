@@ -295,6 +295,7 @@ export default function App() {
   const [batchQuality, setBatchQuality] = useState(20);
   const [batchFramerate, setBatchFramerate] = useState('constant');
   const [batchAudioCodec, setBatchAudioCodec] = useState('AAC');
+  const [batchResolution, setBatchResolution] = useState('original');
   
   // Track counts sliders states
   const [batchAudioCount, setBatchAudioCount] = useState(2);
@@ -405,6 +406,7 @@ export default function App() {
             quality: batchQuality,
             framerate: batchFramerate,
             audioCodec: batchAudioCodec,
+            resolution: batchResolution,
             audioSources: audioSources,
             subtitleSources: subtitleSources,
             // Keep legacy ones for compatibility
@@ -2106,6 +2108,20 @@ export default function App() {
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ fontSize: '9.5px', color: 'var(--text-muted)' }}>Resolution</label>
+                    <select
+                      className="table-select"
+                      style={{ width: '100%', padding: '2px 4px', height: '24px', fontSize: '11px' }}
+                      value={batchResolution}
+                      onChange={(e) => setBatchResolution(e.target.value)}
+                    >
+                      <option value="original">Maintain Original</option>
+                      <option value="2160p">2160p (4K — 3840×2160)</option>
+                      <option value="1080p">1080p (1920×1080)</option>
+                      <option value="720p">720p (1280×720)</option>
+                    </select>
+                  </div>
                   <div>
                     <label style={{ fontSize: '9.5px', color: 'var(--text-muted)' }}>Video Codec</label>
                     <select 
