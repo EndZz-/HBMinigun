@@ -182,6 +182,7 @@ You can change the temp directory path in **Settings**.
 ---
 
 ## 🙏 Acknowledgements
+"This app makes use of FFmpeg and HandBrakeCLI (licensed under GPL/LGPL). Links to their source code can be found | [FFmpeg](https://ffmpeg.org/) | Subtitle extraction and conversion (bundled) | and | [HandBrakeCLI](https://handbrake.fr/) | Video transcoding engine (bundled) |."
 
 Huge shoutout to the original **[HBBatchBeast](https://github.com/JonnyBanana/HBBatchBeast)** project — it set the standard for HandBrake batch GUI wrappers, and HBMiniGun was built to carry that torch forward.
 
