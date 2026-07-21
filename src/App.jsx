@@ -1727,6 +1727,7 @@ export default function App() {
                     <th className="col-divider compact-cell" style={{ width: '85px', textAlign: 'center' }}>Quality Check</th>
 
                     {/* Transcode Options Columns */}
+                    <th style={{ width: '105px' }}>Resolution</th>
                     <th style={{ width: '90px' }}>Video Codec</th>
                     <th style={{ width: '80px' }}>Quality (RF)</th>
                     <th style={{ width: '95px' }}>Frame Rate</th>
@@ -1854,6 +1855,20 @@ export default function App() {
                           >
                             Sample
                           </button>
+                        </td>
+
+                        {/* Resolution */}
+                        <td>
+                          <select
+                            className="table-select"
+                            value={config.resolution || 'original'}
+                            onChange={(e) => handleUpdateConfig(file.fullPath, 'resolution', e.target.value)}
+                          >
+                            <option value="original">Original</option>
+                            <option value="2160p">2160p</option>
+                            <option value="1080p">1080p</option>
+                            <option value="720p">720p</option>
+                          </select>
                         </td>
 
                         {/* Video Codec Selector */}
