@@ -3107,6 +3107,7 @@ function DetailsModal({ file, onClose }) {
 function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
   const [rf, setRf] = useState(config.quality || 20);
   const [codec, setCodec] = useState(config.videoCodec || 'h264');
+  const [resolution, setResolution] = useState(config.resolution || 'original');
   const [timestamp, setTimestamp] = useState(60); // default 60 seconds
   const [isGenerating, setIsGenerating] = useState(false);
   const [sampleUri, setSampleUri] = useState(null);
@@ -3269,7 +3270,8 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
         filePath: file.fullPath,
         timestamp,
         codec,
-        rf
+        rf,
+        resolution
       });
       if (res.success) {
         setSampleUri(res.sampleUri);
@@ -3487,7 +3489,7 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
 
           {/* Controls Bar */}
           <div style={{ background: 'rgba(28, 32, 42, 0.4)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '16px', alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '16px', alignItems: 'center' }}>
               {/* Seek Bar */}
               <div>
                 <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
@@ -3515,6 +3517,22 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
                 >
                   <option value="h264">H.264</option>
                   <option value="h265">H.265 (HEVC)</option>
+                </select>
+              </div>
+
+              {/* Resolution Selection */}
+              <div>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>Target Resolution</label>
+                <select
+                  className="table-select"
+                  style={{ width: '100%', maxWidth: '100%' }}
+                  value={resolution}
+                  onChange={(e) => setResolution(e.target.value)}
+                >
+                  <option value="original">Original</option>
+                  <option value="2160p">2160p (4K)</option>
+                  <option value="1080p">1080p</option>
+                  <option value="720p">720p</option>
                 </select>
               </div>
 

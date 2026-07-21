@@ -1459,7 +1459,7 @@ app.on('window-all-closed', () => {
 });
 
 // Generate Sample Comparison
-ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, rf }) => {
+ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, rf, resolution }) => {
   const settings = loadSettings();
   const tools = getToolPaths(settings);
   if (!tools.handbrake) {
@@ -1490,6 +1490,9 @@ ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, r
     '--cfr'
   ];
 
+  const sampleResMap = { '2160p': { w: 3840, h: 2160 }, '1080p': { w: 1920, h: 1080 }, '720p': { w: 1280, h: 720 } };
+  const sampleResDef = sampleResMap[resolution];
+
   const sampleArgs = [
     '-i', filePath,
     '-o', samplePath,
@@ -1500,6 +1503,9 @@ ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, r
     '-q', rf.toString(),
     '--cfr'
   ];
+  if (sampleResDef) {
+    sampleArgs.push('--maxWidth', sampleResDef.w.toString(), '--maxHeight', sampleResDef.h.toString(), '--loose-anamorphic');
+  }
 
   const runCli = (args) => new Promise((resolve, reject) => {
     const p = spawn(tools.handbrake, args);
