@@ -1371,7 +1371,7 @@ export default function App() {
     
     const height = file.height || 1080;
     if (height >= 2160) {
-      baseBv = 45000;
+      baseBv = 16000;  // realistic H.264 4K target at RF22; RF scaling brings it to ~20k at RF20
       baseBa = 256;
     } else if (height <= 720) {
       baseBv = 4000;
@@ -1401,8 +1401,8 @@ export default function App() {
     // Convert Megabytes (MB) back to bytes
     const estimatedSizeBytes = S * 1024 * 1024;
     
-    // Clamp estimated size between 5% and 150% of the original size to prevent outliers
-    return Math.max(file.sizeBytes * 0.05, Math.min(file.sizeBytes * 1.5, estimatedSizeBytes));
+    // Clamp estimated size between 10% and 400% of the original size
+    return Math.max(file.sizeBytes * 0.10, Math.min(file.sizeBytes * 4.0, estimatedSizeBytes));
   };
 
   // Modal actions
