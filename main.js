@@ -1459,7 +1459,7 @@ app.on('window-all-closed', () => {
 });
 
 // Generate Sample Comparison
-ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, rf, resolution }) => {
+ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, rf, resolution, previewDuration }) => {
   const settings = loadSettings();
   const tools = getToolPaths(settings);
   if (!tools.handbrake) {
@@ -1479,11 +1479,13 @@ ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, r
   const refPath = path.join(tempDir, `sample_ref_${now}.mp4`);
   const samplePath = path.join(tempDir, `sample_out_${now}.mp4`);
 
+  const clipDuration = Math.max(1, Math.min(30, parseInt(previewDuration) || 5));
+
   const refArgs = [
     '-i', filePath,
     '-o', refPath,
     '--start-at', `duration:${timestamp}`,
-    '--stop-at', 'duration:1',
+    '--stop-at', `duration:${clipDuration}`,
     '-f', 'av_mkv',
     '-e', 'x264',
     '-q', '10', // lossless/very high quality reference
@@ -1497,7 +1499,7 @@ ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, r
     '-i', filePath,
     '-o', samplePath,
     '--start-at', `duration:${timestamp}`,
-    '--stop-at', 'duration:1',
+    '--stop-at', `duration:${clipDuration}`,
     '-f', 'av_mkv',
     '-e', codec === 'h265' ? 'x265' : 'x264',
     '-q', rf.toString(),

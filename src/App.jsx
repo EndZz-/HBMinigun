@@ -3108,6 +3108,7 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
   const [rf, setRf] = useState(config.quality || 20);
   const [codec, setCodec] = useState(config.videoCodec || 'h264');
   const [resolution, setResolution] = useState(config.resolution || 'original');
+  const [previewDuration, setPreviewDuration] = useState(5);
   const [timestamp, setTimestamp] = useState(60); // default 60 seconds
   const [isGenerating, setIsGenerating] = useState(false);
   const [sampleUri, setSampleUri] = useState(null);
@@ -3271,7 +3272,8 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
         timestamp,
         codec,
         rf,
-        resolution
+        resolution,
+        previewDuration
       });
       if (res.success) {
         setSampleUri(res.sampleUri);
@@ -3489,7 +3491,7 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
 
           {/* Controls Bar */}
           <div style={{ background: 'rgba(28, 32, 42, 0.4)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '16px', alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: '16px', alignItems: 'center' }}>
               {/* Seek Bar */}
               <div>
                 <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
@@ -3517,6 +3519,21 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
                 >
                   <option value="h264">H.264</option>
                   <option value="h265">H.265 (HEVC)</option>
+                </select>
+              </div>
+
+              {/* Preview Duration */}
+              <div>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>Preview Duration: <strong>{previewDuration}s</strong></label>
+                <select
+                  className="table-select"
+                  style={{ width: '100%', maxWidth: '100%' }}
+                  value={previewDuration}
+                  onChange={(e) => setPreviewDuration(parseInt(e.target.value))}
+                >
+                  {[1, 2, 3, 5, 8, 10, 15, 20, 30].map(s => (
+                    <option key={s} value={s}>{s}s</option>
+                  ))}
                 </select>
               </div>
 
