@@ -908,6 +908,17 @@ async function processNextInQueue(hbPath, settings) {
   let fffile = file;
   try {
     const filePath = fffile.fullPath;
+    const externalSrtFiles = [];
+    const externalSrtLangs = [];
+    const externalSrtNames = [];
+
+    function cleanupTempSubs() {
+      for (const tempPath of externalSrtFiles) {
+        try {
+          if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        } catch(e) {}
+      }
+    }
 
     // Use configured preset format if available, else default to .mkv
     const outputExtension = (currentConfig.presetFile && currentConfig.presetFile.toLowerCase().endsWith('.mp4')) ? '.mp4' : '.mkv';

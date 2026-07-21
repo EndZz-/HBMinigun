@@ -28,6 +28,7 @@ import {
   ArrowUp,
   ArrowDown
 } from 'lucide-react';
+import logo from './assets/logo.png';
 
 // Advanced fuzzy language matching engine (handles 2-letter, 3-letter, regional codes, full names, and aliases)
 const languagesMatch = (streamLang, searchLang) => {
@@ -1480,7 +1481,7 @@ export default function App() {
       {/* Header */}
       <header className="app-header">
         <div className="logo-section">
-          <img src="/logo.png" alt="HBMiniGun" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
+          <img src={logo} alt="HBMiniGun" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
           <h1>HB Minigun</h1>
           <span style={{ background: 'rgba(0, 132, 255, 0.15)', color: 'var(--accent)', padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 'bold' }}>v{appVersion}</span>
         </div>
