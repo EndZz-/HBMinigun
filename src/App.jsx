@@ -3116,6 +3116,10 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
   const [sliderPos, setSliderPos] = useState(50); // 0-100 percent
   const sliderContainerRef = useRef(null);
   const isDraggingSlider = useRef(false);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [playbackPos, setPlaybackPos] = useState(0);   // 0-100 percent of sample duration
+  const [sampleDuration, setSampleDuration] = useState(0);
+  const playbackRafRef = useRef(null);
 
   const refVideoRef = useRef(null);
   const sampleVideoRef = useRef(null);
@@ -3188,6 +3192,61 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
     const rect = sliderContainerRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.touches[0].clientX - rect.left, rect.width));
     setSliderPos((x / rect.width) * 100);
+  };
+
+  // Playback controls for slider mode
+  const togglePlayPause = () => {
+    const ref = refVideoRef.current;
+    const smp = sampleVideoRef.current;
+    if (!ref && !smp) return;
+    if (isPlaying) {
+      ref && ref.pause();
+      smp && smp.pause();
+      setIsPlaying(false);
+    } else {
+      ref && ref.play().catch(() => {});
+      smp && smp.play().catch(() => {});
+      setIsPlaying(true);
+    }
+  };
+
+  const handlePlaybackScrub = (e) => {
+    const pct = parseFloat(e.target.value);
+    setPlaybackPos(pct);
+    const t = (pct / 100) * sampleDuration;
+    if (refVideoRef.current) refVideoRef.current.currentTime = t;
+    if (sampleVideoRef.current) sampleVideoRef.current.currentTime = t;
+  };
+
+  // RAF loop to keep the scrubber in sync while playing
+  const startRaf = () => {
+    const tick = () => {
+      const v = sampleVideoRef.current || refVideoRef.current;
+      if (v && sampleDuration > 0) {
+        setPlaybackPos((v.currentTime / sampleDuration) * 100);
+      }
+      playbackRafRef.current = requestAnimationFrame(tick);
+    };
+    playbackRafRef.current = requestAnimationFrame(tick);
+  };
+  const stopRaf = () => {
+    if (playbackRafRef.current) cancelAnimationFrame(playbackRafRef.current);
+  };
+
+  // Start/stop RAF when playing state changes or samples load
+  React.useEffect(() => {
+    if (viewMode === 'slider' && isPlaying && (refUri || sampleUri)) {
+      startRaf();
+    } else {
+      stopRaf();
+    }
+    return stopRaf;
+  }, [viewMode, isPlaying, refUri, sampleUri]);
+
+  const handleSliderVideoLoadedMetadata = (e) => {
+    if (e.target.duration && !isNaN(e.target.duration)) {
+      setSampleDuration(e.target.duration);
+    }
   };
 
   const formatTime = (secs) => {
@@ -3364,14 +3423,18 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
                 )}
                 {/* Transcoded underneath (full width) */}
                 {sampleUri && !isGenerating && (
-                  <video ref={sampleVideoRef} src={sampleUri} autoPlay loop muted onPlay={handleSamplePlay} onPause={handleSamplePause} onSeeked={handleSampleSeek} onRateChange={handleSampleRateChange}
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
+                  <video ref={sampleVideoRef} src={sampleUri} autoPlay muted
+                    onLoadedMetadata={handleSliderVideoLoadedMetadata}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                 )}
                 {/* Original on top, clipped to left side of slider */}
                 {refUri && !isGenerating && (
-                  <video ref={refVideoRef} src={refUri} autoPlay loop muted onPlay={handleRefPlay} onPause={handleRefPause} onSeeked={handleRefSeek} onRateChange={handleRefRateChange}
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
+                  <video ref={refVideoRef} src={refUri} autoPlay muted
+                    onLoadedMetadata={handleSliderVideoLoadedMetadata}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
                   />
                 )}
                 {/* Slider handle */}
@@ -3392,6 +3455,33 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
                   </div>
                 )}
               </div>
+
+              {/* Custom playback controls for slider mode */}
+              {refUri && sampleUri && !isGenerating && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 4px 0' }}>
+                  <button
+                    type="button"
+                    onClick={togglePlayPause}
+                    style={{ flexShrink: 0, width: '32px', height: '32px', borderRadius: '50%', background: 'var(--accent)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
+                  >
+                    {isPlaying
+                      ? <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="4" height="10" fill="currentColor"/><rect x="7" y="1" width="4" height="10" fill="currentColor"/></svg>
+                      : <svg width="12" height="12" viewBox="0 0 12 12"><polygon points="1,0 11,6 1,12" fill="currentColor"/></svg>
+                    }
+                  </button>
+                  <input
+                    type="range"
+                    min="0" max="100" step="0.1"
+                    value={playbackPos}
+                    onChange={handlePlaybackScrub}
+                    className="custom-slider"
+                    style={{ flex: 1 }}
+                  />
+                  <span style={{ flexShrink: 0, fontSize: '11px', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                    {formatTime(Math.round((playbackPos / 100) * sampleDuration))} / {formatTime(Math.round(sampleDuration))}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
