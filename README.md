@@ -40,7 +40,9 @@
 - Per-slot language dropdowns for audio (up to 10) and subtitles (0–20) — language matching finds the correct track in each file automatically
 - Filter and sort the media library by name, size, codec, Plex compatibility, and transcoded status
 - Auto-selects incompatible files for transcoding on scan
-- <img width="1300" height="1310" alt="image" src="https://github.com/user-attachments/assets/e832ef3a-c092-462c-9c92-f2eadfb2bee5" />
+- 
+-<img width="931" height="938" alt="image" src="https://github.com/user-attachments/assets/d1b1e24d-630e-4b9c-a97d-e69c986423a4" />
+-
 - Manually Sync back to overwrite original content to make sure you're saving space. Free-File-Sync inspired
 
 
