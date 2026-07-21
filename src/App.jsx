@@ -1727,7 +1727,6 @@ export default function App() {
                     <th className="col-divider compact-cell" style={{ width: '85px', textAlign: 'center' }}>Quality Check</th>
 
                     {/* Transcode Options Columns */}
-                    <th style={{ width: '105px' }}>Resolution</th>
                     <th style={{ width: '90px' }}>Video Codec</th>
                     <th style={{ width: '80px' }}>Quality (RF)</th>
                     <th style={{ width: '95px' }}>Frame Rate</th>
@@ -1762,8 +1761,13 @@ export default function App() {
                             onChange={() => handleToggleSelect(file.fullPath)}
                           />
                         </td>
-                        <td className="file-name-cell" style={{ minWidth: '220px' }}>
-                          <div className="file-title" title={file.name}>{file.name}</div>
+                        <td className="file-name-cell" style={{ minWidth: '220px' }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            window.api.showInFolder(file.fullPath);
+                          }}
+                        >
+                          <div className="file-title" title={file.name + '\nRight-click → Show in Explorer'}>{file.name}</div>
                           <div className="file-path" title={file.fullPath}>{file.relativePath}</div>
                         </td>
                         
@@ -1774,6 +1778,11 @@ export default function App() {
                               <span style={{ fontSize: '9px', fontWeight: 'bold', background: 'rgba(0,132,255,0.15)', color: 'var(--accent)', padding: '1px 4px', borderRadius: '3px' }}>VIDEO</span>
                               <strong style={{ color: 'var(--text-bright)' }}>{file.videoCodec}</strong>
                               <span style={{ color: 'var(--text-muted)' }}>({file.videoFormat || 'Profile Unknown'})</span>
+                              {file.width && file.height && (
+                                <span style={{ fontSize: '9px', background: 'rgba(255,255,255,0.07)', color: 'var(--text-muted)', padding: '1px 4px', borderRadius: '3px', whiteSpace: 'nowrap' }}>
+                                  {file.width}×{file.height}
+                                </span>
+                              )}
                             </div>
                             
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '1.5px solid #2e3547', paddingLeft: '6px', marginLeft: '2px' }}>
@@ -1855,20 +1864,6 @@ export default function App() {
                           >
                             Sample
                           </button>
-                        </td>
-
-                        {/* Resolution */}
-                        <td>
-                          <select
-                            className="table-select"
-                            value={config.resolution || 'original'}
-                            onChange={(e) => handleUpdateConfig(file.fullPath, 'resolution', e.target.value)}
-                          >
-                            <option value="original">Original</option>
-                            <option value="2160p">2160p</option>
-                            <option value="1080p">1080p</option>
-                            <option value="720p">720p</option>
-                          </select>
                         </td>
 
                         {/* Video Codec Selector */}

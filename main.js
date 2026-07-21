@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, execFile, exec } = require('child_process');
@@ -1537,6 +1537,10 @@ ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, r
 
 // Update checking handlers
 ipcMain.handle('get-app-version', () => app.getVersion());
+
+ipcMain.handle('show-in-folder', (event, filePath) => {
+  shell.showItemInFolder(filePath);
+});
 
 ipcMain.handle('check-for-updates', async () => {
   try {
