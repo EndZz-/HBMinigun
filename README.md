@@ -62,7 +62,7 @@
 - Extracted SRT files are written to `C:\TempHBMG\subtitles\` and cleaned up automatically
 
 ### 🔄 Live Queue Management
-<img width="2879" height="1183" alt="image" src="https://github.com/user-attachments/assets/9d2f8277-dffc-4444-83d8-16a6481575f4" />
+<img width="2062" height="847" alt="image" src="https://github.com/user-attachments/assets/62cfb4cf-0c5b-4ffd-8413-29b9c4934b75" />
 
 - Start a transcode queue and **add more files while it's running** — no need to stop and restart
 - **Scan new folders mid-queue** and merge results into the current scan list without losing progress
