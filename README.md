@@ -31,7 +31,8 @@
 ## ✨ Features
 
 ### 🎬 Batch Transcoding
-<img width="2879" height="1628" alt="image" src="https://github.com/user-attachments/assets/8d186503-87b3-4ad4-837c-17a2b8f51525" />
+<img width="2062" height="1166" alt="image" src="https://github.com/user-attachments/assets/5544e920-2e1e-461f-a55d-927d1443db81" />
+
 
 - Scan entire directories and subdirectories for compatible video files
 - Per-file configuration for codec, quality (RF), frame rate, audio tracks, and subtitles
