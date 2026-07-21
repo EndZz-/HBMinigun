@@ -184,3 +184,15 @@ You can change the temp directory path in **Settings**.
 ## 🙏 Acknowledgements
 
 Huge shoutout to the original **[HBBatchBeast](https://github.com/JonnyBanana/HBBatchBeast)** project — it set the standard for HandBrake batch GUI wrappers, and HBMiniGun was built to carry that torch forward.
+
+---
+
+## ⚖️ Open Source & Licensing
+
+HBMiniGun is an independent frontend wrapper that launches external binaries to perform media analysis and transcoding. Our compiled releases bundle pre-compiled binaries of the following open-source tools:
+
+*   **HandBrakeCLI** - Licensed under the [GNU General Public License v2 (GPLv2)](https://github.com/HandBrake/HandBrake/blob/master/COPYING). Source code is available at [HandBrake/HandBrake](https://github.com/HandBrake/HandBrake).
+*   **FFmpeg** - Licensed under the [GNU Lesser General Public License v2.1 (LGPLv2.1) / GNU General Public License v3 (GPLv3)](https://ffmpeg.org/legal.html). Source code is available at [FFmpeg/FFmpeg](https://github.com/FFmpeg/FFmpeg).
+*   **MediaInfo** - Licensed under the [BSD 2-Clause License](https://mediaarea.net/en/MediaInfo/License). Source code is available at [MediaArea/MediaInfo](https://github.com/MediaArea/MediaInfo).
+
+HBMiniGun itself is distributed as open-source software. The inclusion of these third-party tools is governed by their respective licenses, and source code for all bundled utilities can be obtained directly from their official repositories linked above.
