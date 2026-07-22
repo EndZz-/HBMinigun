@@ -597,6 +597,47 @@ function extractSubtitleToSrt(ffmpegPath, inputPath, subIndex, outputSrtPath) {
   }
 }
 
+// Helper: Calculate Smart RF value dynamically
+function calculateSmartRF(file, config) {
+  const codec = config.videoCodec || 'h264';
+  const S_orig = (file.sizeBytes || 0) / (1024 * 1024);
+  let T = file.duration;
+  if (!T || isNaN(T) || T <= 0) {
+    T = (file.sizeBytes * 8) / (8000 * 1000);
+  }
+  const H_orig = file.height || 1080;
+  const resolutionHeightMap = { '2160p': 2160, '1080p': 1080, '720p': 720 };
+  const H_target = resolutionHeightMap[config.resolution] || H_orig;
+
+  // Source video bitrate (excluding audio portion)
+  const B_orig = (S_orig * 8 * 1024) / T;
+  const baseBa = 192;
+  const videoSrcBitrate = Math.max(500, B_orig - baseBa);
+
+  // Target compression ratio: H.265 = 45%, H.264 = 65%
+  const isH265 = codec === 'h265';
+  const targetRatio = isH265 ? 0.45 : 0.65;
+  const targetBv = videoSrcBitrate * targetRatio;
+
+  // Get B_base for target height
+  let B_base;
+  if (H_target >= 2160)      B_base = 45000;
+  else if (H_target >= 1080) B_base = 8000;
+  else                        B_base = 4000;
+
+  const E_codec = isH265 ? 0.6 : 1.0;
+  const denom = B_base * E_codec;
+
+  let calculatedRF = 22;
+  const ratioVal = targetBv / denom;
+  if (ratioVal > 0) {
+    calculatedRF = 22 - 6 * (Math.log(ratioVal) / Math.log(2));
+  }
+
+  calculatedRF = Math.round(calculatedRF);
+  return Math.max(18, Math.min(28, calculatedRF));
+}
+
 // Returns true if the subtitle format is text-based (convertible to SRT via ffmpeg).
 // Returns false for image-based formats that require OCR.
 function isTextBasedSubtitle(format) {
@@ -979,7 +1020,10 @@ async function processNextInQueue(hbPath, settings) {
       // Video options
       const encoder = fileConfig.videoCodec === 'h265' ? 'x265' : 'x264';
       args.push('-e', encoder);
-      args.push('-q', fileConfig.quality.toString());
+      const rfVal = fileConfig.quality === 'auto' 
+        ? calculateSmartRF(fffile, fileConfig) 
+        : (parseInt(fileConfig.quality, 10) || 20);
+      args.push('-q', rfVal.toString());
 
       if (fileConfig.framerate === 'constant') {
         args.push('--cfr');

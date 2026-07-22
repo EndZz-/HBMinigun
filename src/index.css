@@ -1207,5 +1207,22 @@ input:checked + .toggle-slider:before {
   box-shadow: 0 0 8px var(--accent-glow);
 }
 
+/* Button Chevron for Directory Accordion Folder Headers */
+.btn-chevron {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+.btn-chevron:hover {
+  color: var(--text-bright);
+}
+
 
 
