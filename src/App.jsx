@@ -26,7 +26,8 @@ import {
   Clock,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  List
 } from 'lucide-react';
 import logo from './assets/logo.png';
 
@@ -195,6 +196,7 @@ export default function App() {
   const [settingsPanelCollapsed, setSettingsPanelCollapsed] = useState(false);
   const [mediaLibraryCollapsed, setMediaLibraryCollapsed] = useState(false);
   const [collapsedDirs, setCollapsedDirs] = useState({});
+  const [viewMode, setViewMode] = useState('grouped'); // 'grouped' or 'list'
   const [autoRescanInterval, setAutoRescanInterval] = useState(0); // minutes, 0 means disabled
   const [autoAddToQueue, setAutoAddToQueue] = useState(false);
   const [timeUntilNextScan, setTimeUntilNextScan] = useState(0); // seconds
@@ -1467,6 +1469,255 @@ export default function App() {
     return S_pred * 1024 * 1024; // return bytes
   };
 
+  const renderFileRow = (file) => {
+    const config = fileConfigs[file.fullPath] || {
+      videoCodec: 'h264',
+      quality: 20,
+      framerate: 'constant',
+      audioCodec: 'AAC',
+      audioSource1: file.audioStreams.length > 0 ? '1' : 'none',
+      audioSource2: 'none',
+      subtitleSource1: 'none',
+      subtitleSource2: 'none'
+    };
+
+    return (
+      <tr 
+        key={file.fullPath}
+        className={`${file.isProcessed ? 'row-processed' : (file.isPlexOk ? 'row-plex-ok' : 'row-plex-red')} ${selectedPaths.has(file.fullPath) ? 'row-selected' : ''}`}
+      >
+        <td className="checkbox-col">
+          <input 
+            type="checkbox" 
+            className="custom-checkbox"
+            checked={selectedPaths.has(file.fullPath)}
+            onChange={() => handleToggleSelect(file.fullPath)}
+          />
+        </td>
+        <td className="file-name-cell" style={{ minWidth: '220px' }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            window.api.showInFolder(file.fullPath);
+          }}
+        >
+          <div className="file-title" title={file.name + '\nRight-click → Show in Explorer'}>{file.name}</div>
+          <div className="file-path" title={file.fullPath}>{file.relativePath}</div>
+        </td>
+        
+        {/* Expanded Original Streams details cell */}
+        <td style={{ width: '180px', minWidth: '180px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '10.5px', padding: '4px 0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '9px', fontWeight: 'bold', background: 'rgba(0,132,255,0.15)', color: 'var(--accent)', padding: '1px 4px', borderRadius: '3px' }}>VIDEO</span>
+              <strong style={{ color: 'var(--text-bright)' }}>{file.videoCodec}</strong>
+              <span style={{ color: 'var(--text-muted)' }}>({file.videoFormat || 'Profile Unknown'})</span>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '1.5px solid #2e3547', paddingLeft: '6px', marginLeft: '2px' }}>
+              <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Audio Tracks ({file.audioStreams.length})</span>
+              {file.audioStreams.map((s, idx) => (
+                <div key={idx} style={{ color: 'var(--text-main)', fontSize: '10px' }}>
+                  Track {idx + 1}: <strong>{s.codec}</strong> ({s.language}) - {s.channels}ch
+                </div>
+              ))}
+              {file.audioStreams.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontStyle: 'italic' }}>No audio tracks</span>}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '1.5px solid #2e3547', paddingLeft: '6px', marginLeft: '2px' }}>
+              <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Subtitles ({file.subtitleStreams.length})</span>
+              {file.subtitleStreams.map((s, idx) => (
+                <div key={idx} style={{ color: 'var(--text-main)', fontSize: '10px' }}>
+                  Track {idx + 1}: <strong>{s.format}</strong> ({s.language})
+                </div>
+              ))}
+              {file.subtitleStreams.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontStyle: 'italic' }}>No subtitles</span>}
+            </div>
+          </div>
+        </td>
+
+        <td className="col-divider compact-cell" style={{ width: '85px', textAlign: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
+            <strong style={{ color: 'var(--text-bright)', fontSize: '11px' }}>{formatBytes(file.sizeBytes)}</strong>
+            <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold' }}>{file.extension}</span>
+          </div>
+        </td>
+
+        {/* Playback & Check Columns */}
+        <td className="compact-cell" style={{ textAlign: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            {file.isPlexOk ? (
+              <span className="plex-status-indicator ok" style={{ padding: '2px 4px', fontSize: '10.5px' }}>
+                <CheckCircle size={10} />
+                Optimal
+              </span>
+            ) : (
+              <span 
+                className="plex-status-indicator not-ok"
+                onClick={() => openDetails(file)}
+                title="Click to view Plex issues"
+                style={{ padding: '2px 4px', fontSize: '10.5px' }}
+              >
+                <AlertTriangle size={10} />
+                Incompatible
+              </span>
+            )}
+          </div>
+        </td>
+
+        {/* Estimated Size */}
+        <td className="compact-cell" style={{ textAlign: 'center' }}>
+          {(() => {
+            const estSize = estimateTranscodedSize(file, config);
+            const percent = Math.round((estSize / file.sizeBytes) * 100);
+            const diffPercent = percent - 100;
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
+                <strong style={{ color: 'var(--accent)', fontSize: '11px' }}>{formatBytes(estSize)}</strong>
+                <span style={{ color: diffPercent < 0 ? '#4caf50' : '#f44336', fontSize: '10.5px', fontWeight: 'bold' }}>
+                  {diffPercent < 0 ? `${diffPercent}%` : `+${diffPercent}%`}
+                </span>
+              </div>
+            );
+          })()}
+        </td>
+
+        {/* Sample Preview button with Divider */}
+        <td className="col-divider compact-cell" style={{ textAlign: 'center' }}>
+          <button 
+            type="button"
+            className="btn btn-outline-blue btn-xs" 
+            style={{ padding: '4px 8px', fontSize: '10.5px', height: '24px', background: 'rgba(0, 132, 255, 0.1)', border: '1px solid rgba(0, 132, 255, 0.3)', color: 'var(--accent)' }}
+            onClick={() => openSampleModal(file, config)}
+          >
+            Sample
+          </button>
+        </td>
+
+        {/* Resolution */}
+        <td>
+          <select
+            className="table-select"
+            value={config.resolution || 'original'}
+            onChange={(e) => handleUpdateConfig(file.fullPath, 'resolution', e.target.value)}
+          >
+            <option value="original">Original</option>
+            <option value="2160p">2160p</option>
+            <option value="1080p">1080p</option>
+            <option value="720p">720p</option>
+          </select>
+        </td>
+
+        {/* Video Codec Selector */}
+        <td>
+          <select 
+            className="table-select"
+            value={config.videoCodec}
+            onChange={(e) => handleUpdateConfig(file.fullPath, 'videoCodec', e.target.value)}
+          >
+            <option value="h264">h264</option>
+            <option value="h265">h265</option>
+          </select>
+        </td>
+        
+        {/* Video Quality (CQ) */}
+        <td>
+          <select 
+            className="table-select"
+            value={config.quality}
+            onChange={(e) => handleUpdateConfig(file.fullPath, 'quality', e.target.value === 'auto' ? 'auto' : parseInt(e.target.value))}
+            style={{ minWidth: '75px' }}
+          >
+            <option value="auto">Auto (RF {calculateSmartRF(file, config)})</option>
+            {Array.from({ length: 21 }, (_, i) => 30 - i).map(q => (
+              <option key={q} value={q}>{q}</option>
+            ))}
+          </select>
+        </td>
+
+        {/* Framerate mode */}
+        <td>
+          <select 
+            className="table-select"
+            value={config.framerate}
+            onChange={(e) => handleUpdateConfig(file.fullPath, 'framerate', e.target.value)}
+          >
+            <option value="constant">Constant</option>
+            <option value="variable">Variable</option>
+          </select>
+        </td>
+
+        {/* Audio Target Codec */}
+        <td>
+          <select 
+            className="table-select"
+            value={config.audioCodec}
+            onChange={(e) => handleUpdateConfig(file.fullPath, 'audioCodec', e.target.value)}
+          >
+            <option value="AAC">AAC</option>
+            <option value="AC3">AC3</option>
+            <option value="EAC3">EAC3</option>
+            <option value="MP3">MP3</option>
+            <option value="Copy">Copy</option>
+          </select>
+        </td>
+
+        {/* Audio Tracks */}
+        <td className="compact-cell" style={{ width: '250px', minWidth: '250px' }}>
+          <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', padding: '4px 0' }}>
+            {Array.from({ length: batchAudioCount }).map((_, aIdx) => {
+              const currentVal = (config.audioSources && config.audioSources[aIdx]) || 
+                                 (aIdx === 0 ? config.audioSource1 : (aIdx === 1 ? config.audioSource2 : 'none')) || 'none';
+              return (
+                <select
+                  key={aIdx}
+                  className="table-select"
+                  style={{ fontSize: '11.5px', padding: '2px 4px', height: '24px', minWidth: '85px', maxWidth: '110px', borderRadius: '3px' }}
+                  value={currentVal}
+                  onChange={(e) => handleUpdateAudioSource(file.fullPath, aIdx, e.target.value)}
+                  title={`Audio Track Slot ${aIdx + 1}`}
+                >
+                  <option value="none">S{aIdx + 1}: None</option>
+                  {file.audioStreams.map((s, idx) => (
+                    <option key={idx} value={(idx + 1).toString()}>
+                      S{idx + 1}: T{idx + 1} ({s.language || 'unk'})
+                    </option>
+                  ))}
+                </select>
+              );
+            })}
+          </div>
+        </td>
+
+        {/* Subtitle Tracks */}
+        <td className="compact-cell" style={{ width: '250px', minWidth: '250px' }}>
+          <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', padding: '4px 0' }}>
+            {Array.from({ length: batchSubCount }).map((_, sIdx) => {
+              const currentVal = (config.subtitleSources && config.subtitleSources[sIdx]) || 
+                                 (sIdx === 0 ? config.subtitleSource1 : (sIdx === 1 ? config.subtitleSource2 : 'none')) || 'none';
+              return (
+                <select
+                  key={sIdx}
+                  className="table-select"
+                  style={{ fontSize: '11.5px', padding: '2px 4px', height: '24px', minWidth: '85px', maxWidth: '110px', borderRadius: '3px' }}
+                  value={currentVal}
+                  onChange={(e) => handleUpdateSubtitleSource(file.fullPath, sIdx, e.target.value)}
+                  title={`Subtitle Track Slot ${sIdx + 1}`}
+                >
+                  <option value="none">S{sIdx + 1}: None</option>
+                  {file.subtitleStreams.map((s, idx) => (
+                    <option key={idx} value={(idx + 1).toString()}>
+                      S{idx + 1}: T{idx + 1} ({s.language || 'unk'})
+                    </option>
+                  ))}
+                </select>
+              );
+            })}
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
   // Modal actions
   const openDetails = (file) => {
     setDetailsFile(file);
@@ -1657,10 +1908,58 @@ export default function App() {
                     className="btn btn-secondary"
                     onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
                     title={sortDir === 'asc' ? 'Ascending — click to switch to Descending' : 'Descending — click to switch to Ascending'}
-                    style={{ height: '32px', width: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', background: 'var(--bg-darker)', minWidth: 'unset', cursor: 'pointer' }}
+                    style={{ height: '32px', width: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', background: 'var(--bg-darker)', minWidth: 'unset', cursor: 'pointer', marginRight: '6px' }}
                   >
                     {sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
                   </button>
+
+                  {/* View Mode Switcher Button Group */}
+                  <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden', height: '32px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('grouped')}
+                      style={{
+                        background: viewMode === 'grouped' ? 'var(--accent)' : 'var(--bg-darker)',
+                        color: viewMode === 'grouped' ? '#fff' : 'var(--text-bright)',
+                        border: 'none',
+                        padding: '0 12px',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.15s ease',
+                        outline: 'none'
+                      }}
+                      title="Group files by subdirectories"
+                    >
+                      <Folder size={12} />
+                      Folders
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('list')}
+                      style={{
+                        background: viewMode === 'list' ? 'var(--accent)' : 'var(--bg-darker)',
+                        color: viewMode === 'list' ? '#fff' : 'var(--text-bright)',
+                        border: 'none',
+                        padding: '0 12px',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.15s ease',
+                        outline: 'none'
+                      }}
+                      title="Show all files in a single flat list"
+                    >
+                      <List size={12} />
+                      List
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1798,324 +2097,83 @@ export default function App() {
                     <th className="compact-cell" style={{ width: '250px', minWidth: '250px' }}>Subtitle Tracks</th>
                   </tr>
                 </thead>
-                {(() => {
-                  const grouped = {};
-                  getFilteredFiles().forEach((file) => {
-                    const rel = file.relativePath || '';
-                    const parts = rel.split(/[/\\]/);
-                    const dir = parts.length <= 1 ? 'Root Directory' : parts.slice(0, -1).join('/');
-                    if (!grouped[dir]) grouped[dir] = [];
-                    grouped[dir].push(file);
-                  });
+                {viewMode === 'list' ? (
+                  <tbody>
+                    {getFilteredFiles().map((file) => renderFileRow(file))}
+                  </tbody>
+                ) : (
+                  (() => {
+                    const grouped = {};
+                    getFilteredFiles().forEach((file) => {
+                      const rel = file.relativePath || '';
+                      const parts = rel.split(/[/\\]/);
+                      const dir = parts.length <= 1 ? 'Root Directory' : parts.slice(0, -1).join('/');
+                      if (!grouped[dir]) grouped[dir] = [];
+                      grouped[dir].push(file);
+                    });
 
-                  const sortedDirs = Object.keys(grouped).sort((a, b) => {
-                    if (a === 'Root Directory') return -1;
-                    if (b === 'Root Directory') return 1;
-                    return a.localeCompare(b);
-                  });
+                    const sortedDirs = Object.keys(grouped).sort((a, b) => {
+                      if (a === 'Root Directory') return -1;
+                      if (b === 'Root Directory') return 1;
+                      return a.localeCompare(b);
+                    });
 
-                  return sortedDirs.map((dir) => {
-                    const isCollapsed = collapsedDirs[dir] === true;
-                    const groupFiles = grouped[dir];
-                    const groupPaths = groupFiles.map(f => f.fullPath);
-                    const allSelected = groupPaths.every(p => selectedPaths.has(p));
+                    return sortedDirs.map((dir) => {
+                      const isCollapsed = collapsedDirs[dir] === true;
+                      const groupFiles = grouped[dir];
+                      const groupPaths = groupFiles.map(f => f.fullPath);
+                      const allSelected = groupPaths.every(p => selectedPaths.has(p));
 
-                    const handleSelectGroup = (checked) => {
-                      setSelectedPaths(prev => {
-                        const next = new Set(prev);
-                        groupPaths.forEach(p => {
-                          if (checked) next.add(p);
-                          else next.delete(p);
+                      const handleSelectGroup = (checked) => {
+                        setSelectedPaths(prev => {
+                          const next = new Set(prev);
+                          groupPaths.forEach(p => {
+                            if (checked) next.add(p);
+                            else next.delete(p);
+                          });
+                          return next;
                         });
-                        return next;
-                      });
-                    };
+                      };
 
-                    const groupTotalSize = groupFiles.reduce((sum, f) => sum + (f.sizeBytes || 0), 0);
+                      const groupTotalSize = groupFiles.reduce((sum, f) => sum + (f.sizeBytes || 0), 0);
 
-                    return (
-                      <tbody key={dir} style={{ borderBottom: '1px solid var(--border)' }}>
-                        {/* Directory Header Row */}
-                        <tr style={{ background: 'var(--bg-darker)', borderBottom: '1px solid var(--border)' }}>
-                          <td colSpan={13} style={{ padding: '8px 16px', background: 'var(--bg-darker)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%' }}>
-                              <input 
-                                type="checkbox" 
-                                className="custom-checkbox"
-                                checked={allSelected}
-                                onChange={(e) => handleSelectGroup(e.target.checked)}
-                              />
-                              <button 
-                                type="button"
-                                className="btn-chevron"
-                                onClick={() => toggleDirCollapsed(dir)}
-                              >
-                                {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                              </button>
-                              <span style={{ fontWeight: 'bold', color: 'var(--accent)', fontSize: '12px', letterSpacing: '0.5px' }}>{dir}</span>
-                              <span className="badge active" style={{ fontSize: '10px', height: '18px', padding: '0 6px', display: 'flex', alignItems: 'center' }}>
-                                {groupFiles.length} files
-                              </span>
-                              <span style={{ marginLeft: 'auto', fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '500' }}>
-                                Total Size: <strong style={{ color: 'var(--text-main)' }}>{formatBytes(groupTotalSize)}</strong>
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
-
-                        {/* File Rows (only if not collapsed) */}
-                        {!isCollapsed && groupFiles.map((file) => {
-                          const config = fileConfigs[file.fullPath] || {
-                            videoCodec: 'h264',
-                            quality: 20,
-                            framerate: 'constant',
-                            audioCodec: 'AAC',
-                            audioSource1: file.audioStreams.length > 0 ? '1' : 'none',
-                            audioSource2: 'none',
-                            subtitleSource1: 'none',
-                            subtitleSource2: 'none'
-                          };
-
-                          return (
-                            <tr 
-                              key={file.fullPath}
-                              className={`${file.isProcessed ? 'row-processed' : (file.isPlexOk ? 'row-plex-ok' : 'row-plex-red')} ${selectedPaths.has(file.fullPath) ? 'row-selected' : ''}`}
-                            >
-                              <td className="checkbox-col">
+                      return (
+                        <tbody key={dir} style={{ borderBottom: '1px solid var(--border)' }}>
+                          {/* Directory Header Row */}
+                          <tr style={{ background: 'var(--bg-darker)', borderBottom: '1px solid var(--border)' }}>
+                            <td colSpan={13} style={{ padding: '8px 16px', background: 'var(--bg-darker)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%' }}>
                                 <input 
                                   type="checkbox" 
                                   className="custom-checkbox"
-                                  checked={selectedPaths.has(file.fullPath)}
-                                  onChange={() => handleToggleSelect(file.fullPath)}
+                                  checked={allSelected}
+                                  onChange={(e) => handleSelectGroup(e.target.checked)}
                                 />
-                              </td>
-                              <td className="file-name-cell" style={{ minWidth: '220px' }}
-                                onContextMenu={(e) => {
-                                  e.preventDefault();
-                                  window.api.showInFolder(file.fullPath);
-                                }}
-                              >
-                                <div className="file-title" title={file.name + '\nRight-click → Show in Explorer'}>{file.name}</div>
-                                <div className="file-path" title={file.fullPath}>{file.relativePath}</div>
-                              </td>
-                              
-                              {/* Expanded Original Streams details cell */}
-                              <td style={{ width: '180px', minWidth: '180px' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '10.5px', padding: '4px 0' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '9px', fontWeight: 'bold', background: 'rgba(0,132,255,0.15)', color: 'var(--accent)', padding: '1px 4px', borderRadius: '3px' }}>VIDEO</span>
-                                    <strong style={{ color: 'var(--text-bright)' }}>{file.videoCodec}</strong>
-                                    <span style={{ color: 'var(--text-muted)' }}>({file.videoFormat || 'Profile Unknown'})</span>
-                                  </div>
-                                  
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '1.5px solid #2e3547', paddingLeft: '6px', marginLeft: '2px' }}>
-                                    <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Audio Tracks ({file.audioStreams.length})</span>
-                                    {file.audioStreams.map((s, idx) => (
-                                      <div key={idx} style={{ color: 'var(--text-main)', fontSize: '10px' }}>
-                                        Track {idx + 1}: <strong>{s.codec}</strong> ({s.language}) - {s.channels}ch
-                                      </div>
-                                    ))}
-                                    {file.audioStreams.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontStyle: 'italic' }}>No audio tracks</span>}
-                                  </div>
-
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '1.5px solid #2e3547', paddingLeft: '6px', marginLeft: '2px' }}>
-                                    <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Subtitles ({file.subtitleStreams.length})</span>
-                                    {file.subtitleStreams.map((s, idx) => (
-                                      <div key={idx} style={{ color: 'var(--text-main)', fontSize: '10px' }}>
-                                        Track {idx + 1}: <strong>{s.format}</strong> ({s.language})
-                                      </div>
-                                    ))}
-                                    {file.subtitleStreams.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontStyle: 'italic' }}>No subtitles</span>}
-                                  </div>
-                                </div>
-                              </td>
-
-                              <td className="col-divider compact-cell" style={{ width: '85px', textAlign: 'center' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
-                                  <strong style={{ color: 'var(--text-bright)', fontSize: '11px' }}>{formatBytes(file.sizeBytes)}</strong>
-                                  <span style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold' }}>{file.extension}</span>
-                                </div>
-                              </td>
-
-                              {/* Playback & Check Columns */}
-                              <td className="compact-cell" style={{ textAlign: 'center' }}>
-                                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                                  {file.isPlexOk ? (
-                                    <span className="plex-status-indicator ok" style={{ padding: '2px 4px', fontSize: '10.5px' }}>
-                                      <CheckCircle size={10} />
-                                      Optimal
-                                    </span>
-                                  ) : (
-                                    <span 
-                                      className="plex-status-indicator not-ok"
-                                      onClick={() => openDetails(file)}
-                                      title="Click to view Plex issues"
-                                      style={{ padding: '2px 4px', fontSize: '10.5px' }}
-                                    >
-                                      <AlertTriangle size={10} />
-                                      Incompatible
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-
-                              {/* Estimated Size */}
-                              <td className="compact-cell" style={{ textAlign: 'center' }}>
-                                {(() => {
-                                  const estSize = estimateTranscodedSize(file, config);
-                                  const percent = Math.round((estSize / file.sizeBytes) * 100);
-                                  const diffPercent = percent - 100;
-                                  return (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
-                                      <strong style={{ color: 'var(--accent)', fontSize: '11px' }}>{formatBytes(estSize)}</strong>
-                                      <span style={{ color: diffPercent < 0 ? '#4caf50' : '#f44336', fontSize: '10.5px', fontWeight: 'bold' }}>
-                                        {diffPercent < 0 ? `${diffPercent}%` : `+${diffPercent}%`}
-                                      </span>
-                                    </div>
-                                  );
-                                })()}
-                              </td>
-
-                              {/* Sample Preview button with Divider */}
-                              <td className="col-divider compact-cell" style={{ textAlign: 'center' }}>
                                 <button 
                                   type="button"
-                                  className="btn btn-outline-blue btn-xs" 
-                                  style={{ padding: '4px 8px', fontSize: '10.5px', height: '24px', background: 'rgba(0, 132, 255, 0.1)', border: '1px solid rgba(0, 132, 255, 0.3)', color: 'var(--accent)' }}
-                                  onClick={() => openSampleModal(file, config)}
+                                  className="btn-chevron"
+                                  onClick={() => toggleDirCollapsed(dir)}
                                 >
-                                  Sample
+                                  {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                                 </button>
-                              </td>
+                                <span style={{ fontWeight: 'bold', color: 'var(--accent)', fontSize: '12px', letterSpacing: '0.5px' }}>{dir}</span>
+                                <span className="badge active" style={{ fontSize: '10px', height: '18px', padding: '0 6px', display: 'flex', alignItems: 'center' }}>
+                                  {groupFiles.length} files
+                                </span>
+                                <span style={{ marginLeft: 'auto', fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '500' }}>
+                                  Total Size: <strong style={{ color: 'var(--text-main)' }}>{formatBytes(groupTotalSize)}</strong>
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
 
-                              {/* Resolution */}
-                              <td>
-                                <select
-                                  className="table-select"
-                                  value={config.resolution || 'original'}
-                                  onChange={(e) => handleUpdateConfig(file.fullPath, 'resolution', e.target.value)}
-                                >
-                                  <option value="original">Original</option>
-                                  <option value="2160p">2160p</option>
-                                  <option value="1080p">1080p</option>
-                                  <option value="720p">720p</option>
-                                </select>
-                              </td>
-
-                              {/* Video Codec Selector */}
-                              <td>
-                                <select 
-                                  className="table-select"
-                                  value={config.videoCodec}
-                                  onChange={(e) => handleUpdateConfig(file.fullPath, 'videoCodec', e.target.value)}
-                                >
-                                  <option value="h264">h264</option>
-                                  <option value="h265">h265</option>
-                                </select>
-                              </td>
-                              
-                              {/* Video Quality (CQ) */}
-                              <td>
-                                <select 
-                                  className="table-select"
-                                  value={config.quality}
-                                  onChange={(e) => handleUpdateConfig(file.fullPath, 'quality', e.target.value === 'auto' ? 'auto' : parseInt(e.target.value))}
-                                  style={{ minWidth: '75px' }}
-                                >
-                                  <option value="auto">Auto (RF {calculateSmartRF(file, config)})</option>
-                                  {Array.from({ length: 21 }, (_, i) => 30 - i).map(q => (
-                                    <option key={q} value={q}>{q}</option>
-                                  ))}
-                                </select>
-                              </td>
-
-                              {/* Framerate mode */}
-                              <td>
-                                <select 
-                                  className="table-select"
-                                  value={config.framerate}
-                                  onChange={(e) => handleUpdateConfig(file.fullPath, 'framerate', e.target.value)}
-                                >
-                                  <option value="constant">Constant</option>
-                                  <option value="variable">Variable</option>
-                                </select>
-                              </td>
-
-                              {/* Audio Target Codec */}
-                              <td>
-                                <select 
-                                  className="table-select"
-                                  value={config.audioCodec}
-                                  onChange={(e) => handleUpdateConfig(file.fullPath, 'audioCodec', e.target.value)}
-                                >
-                                  <option value="AAC">AAC</option>
-                                  <option value="AC3">AC3</option>
-                                  <option value="EAC3">EAC3</option>
-                                  <option value="MP3">MP3</option>
-                                  <option value="Copy">Copy</option>
-                                </select>
-                              </td>
-
-                              {/* Audio Tracks */}
-                              <td className="compact-cell" style={{ width: '250px', minWidth: '250px' }}>
-                                <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', padding: '4px 0' }}>
-                                  {Array.from({ length: batchAudioCount }).map((_, aIdx) => {
-                                    const currentVal = (config.audioSources && config.audioSources[aIdx]) || 
-                                                       (aIdx === 0 ? config.audioSource1 : (aIdx === 1 ? config.audioSource2 : 'none')) || 'none';
-                                    return (
-                                      <select
-                                        key={aIdx}
-                                        className="table-select"
-                                        style={{ fontSize: '11.5px', padding: '2px 4px', height: '24px', minWidth: '85px', maxWidth: '110px', borderRadius: '3px' }}
-                                        value={currentVal}
-                                        onChange={(e) => handleUpdateAudioSource(file.fullPath, aIdx, e.target.value)}
-                                        title={`Audio Track Slot ${aIdx + 1}`}
-                                      >
-                                        <option value="none">S{aIdx + 1}: None</option>
-                                        {file.audioStreams.map((s, idx) => (
-                                          <option key={idx} value={(idx + 1).toString()}>
-                                            S{idx + 1}: T{idx + 1} ({s.language || 'unk'})
-                                          </option>
-                                        ))}
-                                      </select>
-                                    );
-                                  })}
-                                </div>
-                              </td>
-
-                              {/* Subtitle Tracks */}
-                              <td className="compact-cell" style={{ width: '250px', minWidth: '250px' }}>
-                                <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', padding: '4px 0' }}>
-                                  {Array.from({ length: batchSubCount }).map((_, sIdx) => {
-                                    const currentVal = (config.subtitleSources && config.subtitleSources[sIdx]) || 
-                                                       (sIdx === 0 ? config.subtitleSource1 : (sIdx === 1 ? config.subtitleSource2 : 'none')) || 'none';
-                                    return (
-                                      <select
-                                        key={sIdx}
-                                        className="table-select"
-                                        style={{ fontSize: '11.5px', padding: '2px 4px', height: '24px', minWidth: '85px', maxWidth: '110px', borderRadius: '3px' }}
-                                        value={currentVal}
-                                        onChange={(e) => handleUpdateSubtitleSource(file.fullPath, sIdx, e.target.value)}
-                                        title={`Subtitle Track Slot ${sIdx + 1}`}
-                                      >
-                                        <option value="none">S{sIdx + 1}: None</option>
-                                        {file.subtitleStreams.map((s, idx) => (
-                                          <option key={idx} value={(idx + 1).toString()}>
-                                            S{idx + 1}: T{idx + 1} ({s.language || 'unk'})
-                                          </option>
-                                        ))}
-                                      </select>
-                                    );
-                                  })}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    );
-                  });
-                })()}
+                          {/* File Rows (only if not collapsed) */}
+                          {!isCollapsed && groupFiles.map((file) => renderFileRow(file))}
+                        </tbody>
+                      );
+                    });
+                  })()
+                )}
               </table>
             </div>
           )}
