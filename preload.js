@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
+  openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   checkTools: () => ipcRenderer.invoke('check-tools'),

@@ -1605,6 +1605,12 @@ ipcMain.handle('show-in-folder', (event, filePath) => {
   shell.showItemInFolder(filePath);
 });
 
+ipcMain.handle('open-folder', (event, folderPath) => {
+  if (folderPath) {
+    shell.openPath(folderPath);
+  }
+});
+
 ipcMain.handle('check-for-updates', async () => {
   try {
     const https = require('https');

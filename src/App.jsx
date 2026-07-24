@@ -1109,6 +1109,16 @@ export default function App() {
     }
   };
 
+  const handleOpenTranscodeFolder = () => {
+    const destDir = settings.destinationDir || (currentConfig && currentConfig.destinationDir);
+    if (destDir) {
+      window.api.openFolder(destDir);
+      return;
+    }
+    const tempDir = settings.tempDir || 'C:\\TempHBMG';
+    window.api.openFolder(`${tempDir}\\transcodes`);
+  };
+
   const handlePauseJob = async (filePath) => {
     try {
       const res = await window.api.pauseJob(filePath);
@@ -2642,7 +2652,20 @@ export default function App() {
             <Loader2 size={12} className={isTranscoding ? 'animate-spin' : ''} style={{ color: isTranscoding ? 'var(--accent)' : 'var(--text-muted)' }} />
             <span>Active Transcode Queue {queue.length > 0 && `(${queue.filter(i => i.status === 'Completed').length} / ${queue.length} completed)`}</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button 
+              type="button"
+              className="btn btn-secondary btn-sm" 
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenTranscodeFolder();
+              }} 
+              style={{ height: '20px', padding: '0 8px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(0, 132, 255, 0.15)', border: '1px solid rgba(0, 132, 255, 0.3)', color: 'var(--accent)' }}
+              title="Open destination or temp transcodes folder in File Explorer"
+            >
+              <FolderOpen size={10} />
+              Open Folder
+            </button>
             {queue.length > 0 && (
               <button 
                 className="btn btn-secondary btn-sm" 
@@ -2679,6 +2702,11 @@ export default function App() {
                         setActiveConsoleFile(item.file);
                         setActiveConsoleLog(consoleLogsRef.current[item.file.fullPath] || 'No logs received for this file yet.');
                       }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        window.api.showInFolder(item.file.fullPath);
+                      }}
+                      title={`${item.file.name}\nRight-click → Show in Explorer`}
                     >
                       <div className="queue-item-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span className="queue-item-name" style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginRight: '12px' }}>{item.file.name}</span>
