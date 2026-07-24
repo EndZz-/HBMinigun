@@ -1802,7 +1802,7 @@ export default function App() {
                   const grouped = {};
                   getFilteredFiles().forEach((file) => {
                     const rel = file.relativePath || '';
-                    const parts = rel.split('/');
+                    const parts = rel.split(/[/\\]/);
                     const dir = parts.length <= 1 ? 'Root Directory' : parts.slice(0, -1).join('/');
                     if (!grouped[dir]) grouped[dir] = [];
                     grouped[dir].push(file);
