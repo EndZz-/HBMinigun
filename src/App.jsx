@@ -3564,9 +3564,14 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
   const [timestamp, setTimestamp] = useState(60); // default 60 seconds
   const [isGenerating, setIsGenerating] = useState(false);
   const [sampleUri, setSampleUri] = useState(null);
-  const [refUri, setRefUri] = useState(null);
   const [vttUri, setVttUri] = useState(null);
-  const [showSubtitles, setShowSubtitles] = useState(false);
+  const [selectedSubTrack, setSelectedSubTrack] = useState(() => {
+    const s0 = config.subtitleSources && config.subtitleSources[0];
+    if (s0 && s0 !== 'none') return s0;
+    if (config.subtitleSource1 && config.subtitleSource1 !== 'none') return config.subtitleSource1;
+    return (file.subtitleStreams && file.subtitleStreams.length > 0) ? '1' : 'none';
+  });
+  const [showSubtitles, setShowSubtitles] = useState(true);
   const [isMaximized, setIsMaximized] = useState(false);
   const [viewMode, setViewMode] = useState('sidebyside'); // 'sidebyside' | 'slider'
   const [sliderPos, setSliderPos] = useState(50); // 0-100 percent
@@ -3722,7 +3727,6 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
     setRefUri(null);
     setVttUri(null);
     try {
-      const subSlot = (config.subtitleSources && config.subtitleSources[0]) || config.subtitleSource1 || '1';
       const res = await window.api.generateSamples({
         filePath: file.fullPath,
         timestamp,
@@ -3730,7 +3734,7 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
         rf,
         resolution,
         previewDuration,
-        selectedSubTrack: subSlot
+        selectedSubTrack: selectedSubTrack
       });
       if (res.success) {
         setSampleUri(res.sampleUri);
@@ -3962,7 +3966,7 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
 
           {/* Controls Bar */}
           <div style={{ background: 'rgba(28, 32, 42, 0.4)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: '16px', alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr 1fr 1fr 1fr 1.3fr', gap: '16px', alignItems: 'center' }}>
               {/* Seek Bar */}
               <div>
                 <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
@@ -4040,6 +4044,26 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
                   ))}
                 </select>
               </div>
+
+              {/* Subtitle Track Selection */}
+              <div>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
+                  Subtitle Track
+                </label>
+                <select
+                  className="table-select"
+                  style={{ width: '100%', maxWidth: '100%' }}
+                  value={selectedSubTrack}
+                  onChange={(e) => setSelectedSubTrack(e.target.value)}
+                >
+                  <option value="none">None</option>
+                  {file.subtitleStreams && file.subtitleStreams.map((s, idx) => (
+                    <option key={idx} value={(idx + 1).toString()}>
+                      T{idx + 1}: {s.format} ({s.language || 'unk'}) {s.isExternal ? '(EXT)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -4054,14 +4078,14 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
           </button>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {vttUri && (
+            {selectedSubTrack !== 'none' && (
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-bright)', cursor: 'pointer', userSelect: 'none' }}>
                 <input 
                   type="checkbox" 
                   checked={showSubtitles} 
                   onChange={(e) => setShowSubtitles(e.target.checked)} 
                 />
-                Enable Subtitle Sync Preview
+                Show Subtitles in Preview
               </label>
             )}
             <button 
