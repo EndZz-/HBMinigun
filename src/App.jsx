@@ -3564,6 +3564,7 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
   const [timestamp, setTimestamp] = useState(60); // default 60 seconds
   const [isGenerating, setIsGenerating] = useState(false);
   const [sampleUri, setSampleUri] = useState(null);
+  const [refUri, setRefUri] = useState(null);
   const [vttUri, setVttUri] = useState(null);
   const [selectedSubTrack, setSelectedSubTrack] = useState(() => {
     const s0 = config.subtitleSources && config.subtitleSources[0];
