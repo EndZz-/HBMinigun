@@ -255,9 +255,9 @@ export default function App() {
         try {
           const dirPath = fileToRescan.fullPath.substring(0, Math.max(fileToRescan.fullPath.lastIndexOf('\\'), fileToRescan.fullPath.lastIndexOf('/')));
           const updatedResults = await window.api.scanDirectory(dirPath, {
-            transcodeMode: currentConfig.transcodeMode,
-            destinationDir: currentConfig.destinationDir,
-            presetFile: currentConfig.presetFile
+            transcodeMode: transcodeMode,
+            destinationDir: destinationDir,
+            presetFile: settings.handbrakePresetPath
           });
           if (updatedResults && updatedResults.length > 0) {
             setScannedFiles(prev => prev.map(f => {
@@ -272,7 +272,7 @@ export default function App() {
       });
       return cleanup;
     }
-  }, [currentConfig]);
+  }, [transcodeMode, destinationDir, settings.handbrakePresetPath]);
 
   const triggerUpdateCheck = async (silent = false) => {
     setIsCheckingUpdates(true);
@@ -3089,9 +3089,9 @@ export default function App() {
                   try {
                     const dirPath = fileToRescan.fullPath.substring(0, Math.max(fileToRescan.fullPath.lastIndexOf('\\'), fileToRescan.fullPath.lastIndexOf('/')));
                     const updatedResults = await window.api.scanDirectory(dirPath, {
-                      transcodeMode: currentConfig.transcodeMode,
-                      destinationDir: currentConfig.destinationDir,
-                      presetFile: currentConfig.presetFile
+                      transcodeMode: transcodeMode,
+                      destinationDir: destinationDir,
+                      presetFile: settings.handbrakePresetPath
                     });
                     if (updatedResults && updatedResults.length > 0) {
                       setScannedFiles(prev => prev.map(f => {

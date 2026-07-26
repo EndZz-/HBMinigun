@@ -1641,6 +1641,10 @@ function createWindow() {
   mainWindow.maximize();
   mainWindow.setMenuBarVisibility(false);
 
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[RENDERER LOG ${level}] ${message} (${sourceId}:${line})`);
+  });
+
   // Check if running in development mode
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   if (devUrl) {
