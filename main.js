@@ -100,6 +100,84 @@ function copyOrMoveFileSafe(src, dest, mode, originalToReplace = null) {
   }
 }
 
+// Robust file copy/move helper with safety guarantees (asynchronous version)
+async function copyOrMoveFileSafeAsync(src, dest, mode, originalToReplace = null, onProgress = null) {
+  try {
+    await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+  } catch (e) {}
+
+  if (mode === 'move') {
+    try {
+      const srcExists = await fs.promises.stat(src).then(() => true).catch(() => false);
+      const destExists = await fs.promises.stat(dest).then(() => true).catch(() => false);
+      if (destExists && src !== dest) {
+        await fs.promises.unlink(dest);
+      }
+      await fs.promises.rename(src, dest);
+      if (onProgress) {
+        onProgress(100);
+      }
+    } catch (err) {
+      if (err.code === 'EXDEV' || err.code === 'EPERM' || err.code === 'EACCES') {
+        await copyFileWithProgress(src, dest, onProgress);
+        await fs.promises.unlink(src);
+      } else {
+        throw err;
+      }
+    }
+  } else {
+    await copyFileWithProgress(src, dest, onProgress);
+  }
+
+  if (originalToReplace && originalToReplace !== dest) {
+    try {
+      const origExists = await fs.promises.stat(originalToReplace).then(() => true).catch(() => false);
+      if (origExists) {
+        await fs.promises.unlink(originalToReplace);
+      }
+    } catch (e) {
+      console.error(`Failed to clean up replaced original file ${originalToReplace}:`, e);
+    }
+  }
+}
+
+// Helper to copy file asynchronously with progress tracking
+async function copyFileWithProgress(src, dest, onProgress) {
+  let totalBytes = 0;
+  try {
+    const stats = await fs.promises.stat(src);
+    totalBytes = stats.size;
+  } catch (e) {}
+
+  let bytesWritten = 0;
+  const readStream = fs.createReadStream(src);
+  const writeStream = fs.createWriteStream(dest);
+
+  if (onProgress && totalBytes > 0) {
+    let lastPercent = 0;
+    readStream.on('data', (chunk) => {
+      bytesWritten += chunk.length;
+      const percent = Math.min(100, Math.round((bytesWritten / totalBytes) * 100));
+      if (percent > lastPercent) {
+        lastPercent = percent;
+        onProgress(percent);
+      }
+    });
+  }
+
+  const { pipeline } = require('stream');
+  await new Promise((resolve, reject) => {
+    pipeline(readStream, writeStream, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+
+  if (onProgress) {
+    onProgress(100);
+  }
+}
+
 // Check executable path
 function checkTool(name, configuredPath, defaultPaths) {
   // 1. Check custom path if configured
@@ -1241,12 +1319,12 @@ async function processNextInQueue(hbPath, settings) {
             if (currentConfig.postAction === 'move') {
               const origReplace = path.join(path.dirname(filePath), outputFileName);
               mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Replacing original via Move: ${origReplace}\n` });
-              copyOrMoveFileSafe(tempOutPath, origReplace, 'move', filePath);
+              await copyOrMoveFileSafeAsync(tempOutPath, origReplace, 'move', filePath);
               finalOutPath = origReplace;
             } else if (currentConfig.postAction === 'copy') {
               const origReplace = path.join(path.dirname(filePath), outputFileName);
               mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Replacing original via Copy: ${origReplace}\n` });
-              copyOrMoveFileSafe(tempOutPath, origReplace, 'copy', filePath);
+              await copyOrMoveFileSafeAsync(tempOutPath, origReplace, 'copy', filePath);
               finalOutPath = origReplace;
             }
           } else {
@@ -1254,10 +1332,10 @@ async function processNextInQueue(hbPath, settings) {
             // Move or copy the local transcode to the original file's location.
             if (currentConfig.replaceAction === 'move') {
               mainWindow.webContents.send('transcode-log', { filePath, text: `Replacing original via Move: ${finalOutPath}\n` });
-              copyOrMoveFileSafe(tempOutPath, finalOutPath, 'move', filePath);
+              await copyOrMoveFileSafeAsync(tempOutPath, finalOutPath, 'move', filePath);
             } else {
               mainWindow.webContents.send('transcode-log', { filePath, text: `Replacing original via Copy: ${finalOutPath}\n` });
-              copyOrMoveFileSafe(tempOutPath, finalOutPath, 'copy', filePath);
+              await copyOrMoveFileSafeAsync(tempOutPath, finalOutPath, 'copy', filePath);
             }
           }
         } catch (err) {
@@ -1352,7 +1430,9 @@ ipcMain.handle('move-copy-files', async (event, items, config = {}) => {
     
     const destDir = config.destinationDir || item.destinationDir;
     if (!destDir) {
-      results.push({ filePath, success: false, error: 'Destination directory is not specified.' });
+      const errorMsg = 'Destination directory is not specified.';
+      results.push({ filePath, success: false, error: errorMsg });
+      event.sender.send('sync-progress', { filePath, status: 'failed', progress: 0, error: errorMsg });
       continue;
     }
     const finalDir = path.join(destDir, path.dirname(file.relativePath));
@@ -1362,15 +1442,23 @@ ipcMain.handle('move-copy-files', async (event, items, config = {}) => {
     const originalReplacePath = path.join(path.dirname(filePath), outputFileName);
 
     if (!fs.existsSync(transcodedFileLocation)) {
-      results.push({ filePath, success: false, error: 'Transcoded file not found at expected location.' });
+      const errorMsg = 'Transcoded file not found at expected location.';
+      results.push({ filePath, success: false, error: errorMsg });
+      event.sender.send('sync-progress', { filePath, status: 'failed', progress: 0, error: errorMsg });
       continue;
     }
 
+    event.sender.send('sync-progress', { filePath, status: 'syncing', progress: 0 });
+
     try {
-      copyOrMoveFileSafe(transcodedFileLocation, originalReplacePath, mode, filePath);
+      await copyOrMoveFileSafeAsync(transcodedFileLocation, originalReplacePath, mode, filePath, (percent) => {
+        event.sender.send('sync-progress', { filePath, status: 'syncing', progress: percent });
+      });
       results.push({ filePath, success: true });
+      event.sender.send('sync-progress', { filePath, status: 'success', progress: 100 });
     } catch (err) {
       results.push({ filePath, success: false, error: err.message });
+      event.sender.send('sync-progress', { filePath, status: 'failed', progress: 0, error: err.message });
     }
   }
 

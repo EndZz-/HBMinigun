@@ -52,5 +52,10 @@ contextBridge.exposeInMainWorld('api', {
     const subscription = () => callback();
     ipcRenderer.on('app-close-request', subscription);
     return () => ipcRenderer.removeListener('app-close-request', subscription);
+  },
+  onSyncProgress: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('sync-progress', subscription);
+    return () => ipcRenderer.removeListener('sync-progress', subscription);
   }
 });

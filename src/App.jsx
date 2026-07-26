@@ -353,6 +353,118 @@ export default function App() {
     });
   };
 
+  // Custom Right-Click Context Menu State & Effect
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, type: 'source' | 'queue', data }
+
+  useEffect(() => {
+    const handleCloseMenu = () => setContextMenu(null);
+    window.addEventListener('click', handleCloseMenu);
+    window.addEventListener('scroll', handleCloseMenu, true);
+    return () => {
+      window.removeEventListener('click', handleCloseMenu);
+      window.removeEventListener('scroll', handleCloseMenu, true);
+    };
+  }, []);
+
+  const applySettingsToSameFolder = (sourceFile) => {
+    const sourceConfig = fileConfigs[sourceFile.fullPath] || {
+      videoCodec: 'h264',
+      quality: 20,
+      framerate: 'constant',
+      audioCodec: 'AAC',
+      audioSource1: sourceFile.audioStreams.length > 0 ? '1' : 'none',
+      audioSource2: 'none',
+      subtitleSource1: 'none',
+      subtitleSource2: 'none'
+    };
+
+    const getFolder = (p) => p.substring(0, p.lastIndexOf('\\'));
+    const sourceFolder = getFolder(sourceFile.fullPath);
+
+    setFileConfigs(prev => {
+      const next = { ...prev };
+      scannedFiles.forEach(file => {
+        if (getFolder(file.fullPath) === sourceFolder) {
+          next[file.fullPath] = {
+            ...next[file.fullPath],
+            resolution: sourceConfig.resolution || 'original',
+            videoCodec: sourceConfig.videoCodec || 'h264',
+            quality: sourceConfig.quality !== undefined ? sourceConfig.quality : 20,
+            framerate: sourceConfig.framerate || 'constant',
+            audioCodec: sourceConfig.audioCodec || 'AAC',
+            audioSource1: file.audioStreams.length > 0 ? (parseInt(sourceConfig.audioSource1) <= file.audioStreams.length ? sourceConfig.audioSource1 : '1') : 'none',
+            audioSource2: file.audioStreams.length > 1 ? (parseInt(sourceConfig.audioSource2) <= file.audioStreams.length ? sourceConfig.audioSource2 : 'none') : 'none',
+            subtitleSource1: file.subtitleStreams.length > 0 ? (parseInt(sourceConfig.subtitleSource1) <= file.subtitleStreams.length ? sourceConfig.subtitleSource1 : 'none') : 'none',
+            subtitleSource2: file.subtitleStreams.length > 1 ? (parseInt(sourceConfig.subtitleSource2) <= file.subtitleStreams.length ? sourceConfig.subtitleSource2 : 'none') : 'none',
+          };
+
+          if (sourceConfig.audioSources) {
+            next[file.fullPath].audioSources = sourceConfig.audioSources.map((src, idx) => {
+              if (src === 'none' || src === 'first') return src;
+              const trackNum = parseInt(src);
+              return (!isNaN(trackNum) && trackNum <= file.audioStreams.length) ? src : 'none';
+            });
+          }
+          if (sourceConfig.subtitleSources) {
+            next[file.fullPath].subtitleSources = sourceConfig.subtitleSources.map((src, idx) => {
+              if (src === 'none' || src === 'first') return src;
+              const trackNum = parseInt(src);
+              return (!isNaN(trackNum) && trackNum <= file.subtitleStreams.length) ? src : 'none';
+            });
+          }
+        }
+      });
+      return next;
+    });
+
+    showToast('Applied to Folder', `Transcode settings applied to all files in the same folder.`, 'success');
+  };
+
+  const getExpectedTranscodePath = (item) => {
+    if (item.finalPath) return item.finalPath;
+    
+    // Fallback: estimate expected path
+    const file = item.file;
+    const outputExtension = (settings.handbrakePresetPath && settings.handbrakePresetPath.toLowerCase().endsWith('.mp4')) ? '.mp4' : '.mkv';
+    const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+    const outputFileName = baseName + outputExtension;
+    
+    if (transcodeMode === 'transcodeDir') {
+      if (!destinationDir) return null;
+      const relativeDir = file.relativePath.substring(0, file.relativePath.lastIndexOf('\\') + 1);
+      return destinationDir + '\\' + relativeDir + outputFileName;
+    } else {
+      const sourceDir = file.fullPath.substring(0, file.fullPath.lastIndexOf('\\') + 1);
+      return sourceDir + outputFileName;
+    }
+  };
+
+  const handleShowTranscodedInFolder = async (item) => {
+    const p = getExpectedTranscodePath(item);
+    if (p) {
+      await window.api.showInFolder(p);
+    } else {
+      showToast('Error', 'Unable to resolve transcode destination path.', 'error');
+    }
+  };
+
+  const handleOpenContextMenu = (e, type, data) => {
+    e.preventDefault();
+    const menuWidth = 240;
+    const menuHeight = 100;
+    let x = e.clientX;
+    let y = e.clientY;
+
+    if (x + menuWidth > window.innerWidth) {
+      x = window.innerWidth - menuWidth - 10;
+    }
+    if (y + menuHeight > window.innerHeight) {
+      y = window.innerHeight - menuHeight - 10;
+    }
+
+    setContextMenu({ x, y, type, data });
+  };
+
   const handleUpdateConfig = (filePath, key, value) => {
     setFileConfigs(prev => ({
       ...prev,
@@ -382,7 +494,12 @@ export default function App() {
                 trackVal = '1';
               } else if (langCode !== 'none') {
                 const matchedIdx = file.audioStreams.findIndex(s => s.language && languagesMatch(s.language, langCode));
-                trackVal = matchedIdx !== -1 ? (matchedIdx + 1).toString() : 'none';
+                if (matchedIdx !== -1) {
+                  trackVal = (matchedIdx + 1).toString();
+                } else {
+                  // Fallback: if the corresponding track index exists, select it
+                  trackVal = i < file.audioStreams.length ? (i + 1).toString() : 'none';
+                }
               }
             }
             audioSources.push(trackVal);
@@ -517,7 +634,8 @@ export default function App() {
             ...item,
             percent: data.success ? 100 : item.percent,
             status: data.success ? 'Completed' : 'Failed',
-            error: data.error
+            error: data.error,
+            finalPath: data.success ? data.finalPath : undefined
           };
         }
         return item;
@@ -537,12 +655,27 @@ export default function App() {
       setCloseConfirmationOpen(true);
     });
 
+    const unsubscribeSyncProgress = window.api.onSyncProgress((data) => {
+      setSyncItems(prev => prev.map(item => {
+        if (item.file.fullPath === data.filePath) {
+          return {
+            ...item,
+            status: data.status,
+            progress: data.progress,
+            error: data.error || null
+          };
+        }
+        return item;
+      }));
+    });
+
     return () => {
       unsubscribeProgress();
       unsubscribeLogEvent();
       unsubscribeFileComplete();
       unsubscribeQueueComplete();
       unsubscribeCloseRequest();
+      unsubscribeSyncProgress();
     };
   }, []);
 
@@ -1297,9 +1430,9 @@ export default function App() {
 
     setIsSyncing(true);
     
-    // Set status of selected items to syncing
+    // Set status of selected items to pending and reset progress
     setSyncItems(prev => prev.map(item => 
-      item.selected ? { ...item, status: 'syncing', error: null } : item
+      item.selected ? { ...item, status: 'pending', progress: 0, error: null } : item
     ));
 
     try {
@@ -1505,12 +1638,9 @@ export default function App() {
           />
         </td>
         <td className="file-name-cell" style={{ minWidth: '220px' }}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            window.api.showInFolder(file.fullPath);
-          }}
+          onContextMenu={(e) => handleOpenContextMenu(e, 'source', file)}
         >
-          <div className="file-title" title={file.name + '\nRight-click → Show in Explorer'}>{file.name}</div>
+          <div className="file-title" title={file.name + '\nRight-click for options'}>{file.name}</div>
           <div className="file-path" title={file.fullPath}>{file.relativePath}</div>
         </td>
         
@@ -2702,11 +2832,8 @@ export default function App() {
                         setActiveConsoleFile(item.file);
                         setActiveConsoleLog(consoleLogsRef.current[item.file.fullPath] || 'No logs received for this file yet.');
                       }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        window.api.showInFolder(item.file.fullPath);
-                      }}
-                      title={`${item.file.name}\nRight-click → Show in Explorer`}
+                      onContextMenu={(e) => handleOpenContextMenu(e, 'queue', item)}
+                      title={`${item.file.name}\nRight-click for options`}
                     >
                       <div className="queue-item-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span className="queue-item-name" style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginRight: '12px' }}>{item.file.name}</span>
@@ -2892,6 +3019,67 @@ export default function App() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Custom Context Menu Overlay */}
+      {contextMenu && (
+        <div 
+          className="custom-context-menu"
+          style={{
+            top: `${contextMenu.y}px`,
+            left: `${contextMenu.x}px`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.type === 'source' && (
+            <>
+              <div 
+                className="context-menu-item"
+                onClick={() => {
+                  window.api.showInFolder(contextMenu.data.fullPath);
+                  setContextMenu(null);
+                }}
+              >
+                <FolderOpen size={14} />
+                Show Source in Explorer
+              </div>
+              <div 
+                className="context-menu-item"
+                onClick={() => {
+                  applySettingsToSameFolder(contextMenu.data);
+                  setContextMenu(null);
+                }}
+              >
+                <Copy size={14} />
+                Apply Settings to All in Folder
+              </div>
+            </>
+          )}
+          {contextMenu.type === 'queue' && (
+            <>
+              <div 
+                className="context-menu-item"
+                onClick={() => {
+                  window.api.showInFolder(contextMenu.data.file.fullPath);
+                  setContextMenu(null);
+                }}
+              >
+                <FileVideo size={14} />
+                Locate Source File
+              </div>
+              <div 
+                className="context-menu-item"
+                onClick={() => {
+                  handleShowTranscodedInFolder(contextMenu.data);
+                  setContextMenu(null);
+                }}
+              >
+                <CheckCircle size={14} />
+                Locate Transcoded File
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -3846,6 +4034,7 @@ function SyncModal({ isOpen, syncItems, setSyncItems, onClose, onExecute, isSync
   
   const moveCount = selectedItems.filter(item => item.action === 'move').length;
   const copyCount = selectedItems.filter(item => item.action === 'copy').length;
+  const completedCount = selectedItems.filter(item => item.status === 'success' || item.status === 'failed').length;
 
   return (
     <div className="modal-overlay" style={{ zIndex: 9999 }}>
@@ -4073,8 +4262,20 @@ function SyncModal({ isOpen, syncItems, setSyncItems, onClose, onExecute, isSync
                     {/* Status */}
                     <td style={{ padding: '12px 12px', textAlign: 'center' }}>
                       {item.status === 'pending' && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Ready</span>}
-                      {item.status === 'syncing' && <Loader2 size={12} className="animate-spin" style={{ color: 'var(--accent)' }} />}
-                      {item.status === 'success' && <CheckCircle size={14} style={{ color: '#4caf50' }} />}
+                      {item.status === 'syncing' && (
+                        <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                          <Loader2 size={12} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                          <span style={{ fontSize: '9px', color: 'var(--accent)', fontWeight: 'bold' }}>
+                            {item.progress !== undefined ? `${item.progress}%` : 'Syncing'}
+                          </span>
+                        </div>
+                      )}
+                      {item.status === 'success' && (
+                        <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                          <CheckCircle size={14} style={{ color: '#4caf50' }} />
+                          <span style={{ fontSize: '9px', color: '#4caf50', fontWeight: 'bold' }}>Done</span>
+                        </div>
+                      )}
                       {item.status === 'failed' && (
                         <span 
                           style={{ color: '#f44336', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'help', fontWeight: 'bold' }}
@@ -4130,7 +4331,7 @@ function SyncModal({ isOpen, syncItems, setSyncItems, onClose, onExecute, isSync
               {isSyncing ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  Syncing Files...
+                  Syncing ({completedCount}/{selectedItems.length})...
                 </>
               ) : (
                 <>
