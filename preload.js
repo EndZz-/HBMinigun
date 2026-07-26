@@ -27,7 +27,14 @@ contextBridge.exposeInMainWorld('api', {
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   downloadAndInstallUpdate: (downloadUrl) => ipcRenderer.invoke('download-and-install-update', downloadUrl),
   
+  showFileContextMenu: (file) => ipcRenderer.send('show-file-context-menu', file),
+
   // Real-time Event listeners
+  onRescanFile: (callback) => {
+    const subscription = (event, file) => callback(file);
+    ipcRenderer.on('rescan-file', subscription);
+    return () => ipcRenderer.removeListener('rescan-file', subscription);
+  },
   onProgress: (callback) => {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('transcode-progress', subscription);

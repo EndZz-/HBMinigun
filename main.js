@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, execFile, exec } = require('child_process');
@@ -479,17 +479,63 @@ function parseMediaInfo(file, data) {
   }
 
   // 4. Subtitle Codec: SRT, WebVTT (or none)
-  const allowedSubtitles = ['UTF-8', 'SRT', 'WEBVTT', 'ASS', 'SSA']; // Wait, ASS/SSA was flagged as Red in requirements!
-  // The requirements say:
-  // "Subtitles: PGS, VOBSUB, ASS/SSA (image-based or styled subtitles which force video transcoding on many clients) are RED"
-  // So only SRT / UTF-8 / WebVTT are OK.
+  // Subtitles: PGS, VOBSUB, ASS/SSA (image-based or styled subtitles which force video transcoding on many clients) are RED.
+  // Only SRT / UTF-8 / WebVTT are OK.
+
+  // Detect external subtitle files in the same directory
+  try {
+    const parentDir = path.dirname(file.fullPath);
+    const baseName = path.basename(file.fullPath, path.extname(file.fullPath)).toLowerCase();
+    if (fs.existsSync(parentDir)) {
+      const sisterFiles = fs.readdirSync(parentDir);
+      const subExtensions = ['.srt', '.ass', '.ssa', '.vtt'];
+
+      for (const sister of sisterFiles) {
+        const sisExt = path.extname(sister).toLowerCase();
+        if (subExtensions.includes(sisExt)) {
+          const sisBaseName = path.basename(sister, sisExt).toLowerCase();
+          let isMatch = false;
+          let language = 'und';
+
+          if (sisBaseName === baseName) {
+            isMatch = true;
+          } else if (sisBaseName.startsWith(baseName + '.')) {
+            isMatch = true;
+            const parts = sisBaseName.substring(baseName.length + 1).split('.');
+            if (parts.length > 0 && parts[parts.length - 1].length >= 2) {
+              language = parts[parts.length - 1];
+            }
+          }
+
+          if (isMatch) {
+            const fullSisPath = path.join(parentDir, sister);
+            const alreadyExists = result.subtitleStreams.some(s => s.isExternal && s.externalPath === fullSisPath);
+            if (!alreadyExists) {
+              let fmt = sisExt.replace('.', '').toUpperCase();
+              if (fmt === 'VTT') fmt = 'WEBVTT';
+              result.subtitleStreams.push({
+                format: fmt,
+                language: language,
+                isExternal: true,
+                externalPath: fullSisPath
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error(`Error scanning external subtitles for ${file.fullPath}:`, e);
+  }
+
   const allowedSubtitlesOk = ['UTF-8', 'SRT', 'WEBVTT'];
   for (let i = 0; i < result.subtitleStreams.length; i++) {
     const sub = result.subtitleStreams[i];
     const formatUpper = sub.format.toUpperCase();
     const isSubOk = allowedSubtitlesOk.some(s => formatUpper.includes(s));
     if (!isSubOk) {
-      result.plexIssues.push(`Subtitle stream #${i + 1} (${sub.format}) is not SRT/WebVTT`);
+      const label = sub.isExternal ? `${sub.format} (EXT)` : sub.format;
+      result.plexIssues.push(`Subtitle stream #${i + 1} (${label}) is not SRT/WebVTT`);
     }
   }
 
@@ -1162,19 +1208,43 @@ async function processNextInQueue(hbPath, settings) {
         const tempSubDir = path.join(settings.tempDir || 'C:\\TempHBMG', 'subtitles', path.basename(filePath, path.extname(filePath)));
 
         const passthroughTracks = []; // 1-based track numbers for image-based subs
-        const srtFiles = [];           // paths of extracted SRT files
+        const srtFiles = [];           // paths of extracted or external SRT files
         const srtLangs = [];           // language codes matching each SRT file
         const srtCodesets = [];        // UTF-8 for all
+        const ssaFiles = [];           // paths of external ASS/SSA files
+        const ssaLangs = [];           // language codes matching each SSA file
 
         for (const trackNumStr of selectedSubTracks) {
           const trackNum = parseInt(trackNumStr, 10); // 1-based
           const streamIdx = trackNum - 1;             // 0-based for ffmpeg
           const streamInfo = fffile.subtitleStreams && fffile.subtitleStreams[streamIdx];
-          const format = streamInfo ? streamInfo.format : '';
+          const format = streamInfo ? streamInfo.format.toUpperCase() : '';
           const lang = (streamInfo && streamInfo.language) || 'und';
 
-          if (ffmpegBin && isTextBasedSubtitle(format)) {
-            // Text-based: extract + convert to SRT via ffmpeg
+          if (streamInfo && streamInfo.isExternal) {
+            mainWindow.webContents.send('transcode-log', {
+              filePath,
+              text: `[Subtitle] Processing external subtitle track ${trackNum} (${format}) from ${streamInfo.externalPath}\n`
+            });
+            if (format.includes('ASS') || format.includes('SSA')) {
+              ssaFiles.push(streamInfo.externalPath);
+              ssaLangs.push(lang);
+            } else if (format.includes('VTT')) {
+              const srtPath = path.join(tempSubDir, `ext_track${streamIdx}.srt`);
+              let convertedPath = null;
+              if (ffmpegBin) {
+                convertedPath = extractSubtitleToSrt(ffmpegBin, streamInfo.externalPath, 0, srtPath);
+              }
+              srtFiles.push(convertedPath || streamInfo.externalPath);
+              srtLangs.push(lang);
+              srtCodesets.push('UTF-8');
+            } else {
+              srtFiles.push(streamInfo.externalPath);
+              srtLangs.push(lang);
+              srtCodesets.push('UTF-8');
+            }
+          } else if (ffmpegBin && isTextBasedSubtitle(format)) {
+            // Text-based internal: extract + convert to SRT via ffmpeg
             const srtPath = path.join(tempSubDir, `track${streamIdx}.srt`);
             mainWindow.webContents.send('transcode-log', {
               filePath,
@@ -1213,11 +1283,17 @@ async function processNextInQueue(hbPath, settings) {
           args.push('-s', passthroughTracks.join(','));
         }
 
-        // Add converted SRT tracks via HandBrake's external SRT flags
+        // Add converted/external SRT tracks via HandBrake's external SRT flags
         if (srtFiles.length > 0) {
           args.push('--srt-file', srtFiles.join(','));
           args.push('--srt-lang', srtLangs.join(','));
           args.push('--srt-codeset', srtCodesets.join(','));
+        }
+
+        // Add external SSA/ASS tracks
+        if (ssaFiles.length > 0) {
+          args.push('--ssa-file', ssaFiles.join(','));
+          args.push('--ssa-lang', ssaLangs.join(','));
         }
 
         // Neither passthrough nor SRT — nothing to add (HandBrake omits subs by default)
@@ -1602,7 +1678,7 @@ app.on('window-all-closed', () => {
 });
 
 // Generate Sample Comparison
-ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, rf, resolution, previewDuration }) => {
+ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, rf, resolution, previewDuration, selectedSubTrack }) => {
   const settings = loadSettings();
   const tools = getToolPaths(settings);
   if (!tools.handbrake) {
@@ -1621,8 +1697,41 @@ ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, r
   const now = Date.now();
   const refPath = path.join(tempDir, `sample_ref_${now}.mp4`);
   const samplePath = path.join(tempDir, `sample_out_${now}.mp4`);
+  const vttPath = path.join(tempDir, `sample_sub_${now}.vtt`);
 
   const clipDuration = Math.max(1, Math.min(30, parseInt(previewDuration) || 5));
+
+  // Extract WebVTT subtitle chunk if selected
+  let vttUri = null;
+  if (selectedSubTrack && selectedSubTrack !== 'none' && tools.ffmpeg) {
+    try {
+      const mediaInfoData = await runMediaInfo(tools.mediaInfo, filePath);
+      const parsed = parseMediaInfo({ fullPath: filePath, extension: path.extname(filePath) }, mediaInfoData);
+      const trackNum = parseInt(selectedSubTrack, 10);
+      const streamIdx = trackNum - 1;
+      const subInfo = parsed.subtitleStreams && parsed.subtitleStreams[streamIdx];
+
+      let subExtractCmd = '';
+      if (subInfo && subInfo.isExternal) {
+        subExtractCmd = `"${tools.ffmpeg}" -y -ss ${timestamp} -t ${clipDuration} -i "${subInfo.externalPath}" "${vttPath}"`;
+      } else if (subInfo) {
+        subExtractCmd = `"${tools.ffmpeg}" -y -ss ${timestamp} -t ${clipDuration} -i "${filePath}" -map 0:s:${streamIdx} "${vttPath}"`;
+      }
+
+      if (subExtractCmd) {
+        const { execSync } = require('child_process');
+        execSync(subExtractCmd, { stdio: 'ignore' });
+        if (fs.existsSync(vttPath)) {
+          const vttData = fs.readFileSync(vttPath).toString('base64');
+          vttUri = `data:text/vtt;base64,${vttData}`;
+          fs.unlink(vttPath, () => {});
+        }
+      }
+    } catch (subErr) {
+      console.error('Failed to extract sample WebVTT subtitle:', subErr.message);
+      if (fs.existsSync(vttPath)) fs.unlink(vttPath, () => {});
+    }
+  }
 
   const refArgs = [
     '-i', filePath,
@@ -1676,12 +1785,14 @@ ipcMain.handle('generate-samples', async (event, { filePath, timestamp, codec, r
     return {
       success: true,
       refUri: `data:video/mp4;base64,${refData}`,
-      sampleUri: `data:video/mp4;base64,${sampleData}`
+      sampleUri: `data:video/mp4;base64,${sampleData}`,
+      vttUri: vttUri
     };
   } catch (err) {
     console.error('Sample generation failed:', err);
     if (fs.existsSync(refPath)) fs.unlink(refPath, () => {});
     if (fs.existsSync(samplePath)) fs.unlink(samplePath, () => {});
+    if (fs.existsSync(vttPath)) fs.unlink(vttPath, () => {});
     return { success: false, error: err.message };
   }
 });
@@ -1691,6 +1802,26 @@ ipcMain.handle('get-app-version', () => app.getVersion());
 
 ipcMain.handle('show-in-folder', (event, filePath) => {
   shell.showItemInFolder(filePath);
+});
+
+ipcMain.on('show-file-context-menu', (event, file) => {
+  if (!file || !file.fullPath) return;
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Show in Explorer',
+      click: () => {
+        shell.showItemInFolder(file.fullPath);
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Rescan File & Folder',
+      click: () => {
+        event.sender.send('rescan-file', file);
+      }
+    }
+  ]);
+  menu.popup(BrowserWindow.fromWebContents(event.sender));
 });
 
 ipcMain.handle('open-folder', (event, folderPath) => {

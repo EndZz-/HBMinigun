@@ -248,6 +248,32 @@ export default function App() {
     };
   }, [isResizingQueue]);
 
+  useEffect(() => {
+    if (window.api && window.api.onRescanFile) {
+      const cleanup = window.api.onRescanFile(async (fileToRescan) => {
+        showToast('Rescanning...', `Refreshing subtitle and stream details for ${fileToRescan.name}`);
+        try {
+          const dirPath = fileToRescan.fullPath.substring(0, Math.max(fileToRescan.fullPath.lastIndexOf('\\'), fileToRescan.fullPath.lastIndexOf('/')));
+          const updatedResults = await window.api.scanDirectory(dirPath, {
+            transcodeMode: currentConfig.transcodeMode,
+            destinationDir: currentConfig.destinationDir,
+            presetFile: currentConfig.presetFile
+          });
+          if (updatedResults && updatedResults.length > 0) {
+            setScannedFiles(prev => prev.map(f => {
+              const updated = updatedResults.find(u => u.fullPath === f.fullPath);
+              return updated || f;
+            }));
+            showToast('Rescan Complete', `Refreshed details for ${fileToRescan.name}`, 'success');
+          }
+        } catch (err) {
+          showToast('Rescan Error', err.message);
+        }
+      });
+      return cleanup;
+    }
+  }, [currentConfig]);
+
   const triggerUpdateCheck = async (silent = false) => {
     setIsCheckingUpdates(true);
     try {
@@ -1667,7 +1693,7 @@ export default function App() {
               <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Subtitles ({file.subtitleStreams.length})</span>
               {file.subtitleStreams.map((s, idx) => (
                 <div key={idx} style={{ color: 'var(--text-main)', fontSize: '10px' }}>
-                  Track {idx + 1}: <strong>{s.format}</strong> ({s.language})
+                  Track {idx + 1}: <strong>{s.format}</strong> ({s.language}) {s.isExternal ? <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>(EXT)</span> : ''}
                 </div>
               ))}
               {file.subtitleStreams.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontStyle: 'italic' }}>No subtitles</span>}
@@ -3054,6 +3080,34 @@ export default function App() {
                 <Copy size={14} />
                 Apply Settings to All in Folder
               </div>
+              <div 
+                className="context-menu-item"
+                onClick={async () => {
+                  const fileToRescan = contextMenu.data;
+                  setContextMenu(null);
+                  showToast('Rescanning...', `Refreshing details for ${fileToRescan.name}`);
+                  try {
+                    const dirPath = fileToRescan.fullPath.substring(0, Math.max(fileToRescan.fullPath.lastIndexOf('\\'), fileToRescan.fullPath.lastIndexOf('/')));
+                    const updatedResults = await window.api.scanDirectory(dirPath, {
+                      transcodeMode: currentConfig.transcodeMode,
+                      destinationDir: currentConfig.destinationDir,
+                      presetFile: currentConfig.presetFile
+                    });
+                    if (updatedResults && updatedResults.length > 0) {
+                      setScannedFiles(prev => prev.map(f => {
+                        const updated = updatedResults.find(u => u.fullPath === f.fullPath);
+                        return updated || f;
+                      }));
+                      showToast('Rescan Complete', `Refreshed subtitle and stream details for ${fileToRescan.name}`, 'success');
+                    }
+                  } catch (err) {
+                    showToast('Rescan Error', err.message);
+                  }
+                }}
+              >
+                <RefreshCw size={14} />
+                Rescan File & Folder
+              </div>
             </>
           )}
           {contextMenu.type === 'queue' && (
@@ -3441,9 +3495,19 @@ function DetailsModal({ file, onClose }) {
           <div className="form-group">
             <label style={{ color: 'var(--plex-red-text)' }}>Compatibility Issues ({file.plexIssues.length})</label>
             <ul style={{ paddingLeft: '20px', fontSize: '12.5px', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {file.plexIssues.map((issue, idx) => (
-                <li key={idx} style={{ color: '#fca5a5' }}>{issue}</li>
-              ))}
+              {file.plexIssues.map((issue, idx) => {
+                const isGraphicalSub = issue.includes('Subtitle stream') && (issue.includes('PGS') || issue.includes('VOBSUB'));
+                return (
+                  <li key={idx} style={{ color: '#fca5a5' }}>
+                    {issue}
+                    {isGraphicalSub && (
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', fontStyle: 'italic' }}>
+                        (Graphical image-based subtitles cannot be converted to text and will be passed through unchanged)
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
 
@@ -3474,7 +3538,7 @@ function DetailsModal({ file, onClose }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
                   {file.subtitleStreams.map((s, idx) => (
                     <div key={idx} style={{ fontSize: '12.5px', color: 'var(--text-main)' }}>
-                      #{idx + 1}: <strong>{s.format}</strong> ({s.language})
+                      #{idx + 1}: <strong>{s.format}</strong> ({s.language}) {s.isExternal ? <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>(EXT)</span> : ''}
                     </div>
                   ))}
                   {file.subtitleStreams.length === 0 && <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No subtitle streams detected</div>}
@@ -3501,6 +3565,8 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [sampleUri, setSampleUri] = useState(null);
   const [refUri, setRefUri] = useState(null);
+  const [vttUri, setVttUri] = useState(null);
+  const [showSubtitles, setShowSubtitles] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [viewMode, setViewMode] = useState('sidebyside'); // 'sidebyside' | 'slider'
   const [sliderPos, setSliderPos] = useState(50); // 0-100 percent
@@ -3654,18 +3720,23 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
     setIsGenerating(true);
     setSampleUri(null);
     setRefUri(null);
+    setVttUri(null);
     try {
+      const subSlot = (config.subtitleSources && config.subtitleSources[0]) || config.subtitleSource1 || '1';
       const res = await window.api.generateSamples({
         filePath: file.fullPath,
         timestamp,
         codec,
         rf,
         resolution,
-        previewDuration
+        previewDuration,
+        selectedSubTrack: subSlot
       });
       if (res.success) {
         setSampleUri(res.sampleUri);
         setRefUri(res.refUri);
+        setVttUri(res.vttUri || null);
+        if (res.vttUri) setShowSubtitles(true);
       } else {
         showToast('Generation Failed', res.error);
       }
@@ -3769,7 +3840,11 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
                 <div style={isMaximized ? { flex: 1, minHeight: '0', background: '#0c0e12', border: '1px solid var(--border)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' } : { aspectRatio: '16/9', background: '#0c0e12', border: '1px solid var(--border)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative', width: '100%' }}>
                   {isGenerating && (<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}><Loader2 className="animate-spin" size={24} style={{ color: 'var(--plex-green-text)' }} /><span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Extracting reference...</span></div>)}
                   {!isGenerating && !refUri && (<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Click Generate Preview to load</span>)}
-                  {refUri && !isGenerating && (<video ref={refVideoRef} src={refUri} autoPlay loop muted controls onPlay={handleRefPlay} onPause={handleRefPause} onSeeked={handleRefSeek} onRateChange={handleRefRateChange} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />)}
+                  {refUri && !isGenerating && (
+                    <video ref={refVideoRef} src={refUri} autoPlay loop muted controls onPlay={handleRefPlay} onPause={handleRefPause} onSeeked={handleRefSeek} onRateChange={handleRefRateChange} style={{ width: '100%', height: '100%', objectFit: 'contain' }}>
+                      {showSubtitles && vttUri && <track src={vttUri} kind="subtitles" label="Preview Subs" default />}
+                    </video>
+                  )}
                 </div>
               </div>
               {/* Right: Transcoded */}
@@ -3778,7 +3853,11 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
                 <div style={isMaximized ? { flex: 1, minHeight: '0', background: '#0c0e12', border: '1px solid var(--border)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' } : { aspectRatio: '16/9', background: '#0c0e12', border: '1px solid var(--border)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative', width: '100%' }}>
                   {isGenerating && (<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}><Loader2 className="animate-spin" size={24} style={{ color: 'var(--accent)' }} /><span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Encoding preview...</span></div>)}
                   {!isGenerating && !sampleUri && (<span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Click Generate Preview to load</span>)}
-                  {sampleUri && !isGenerating && (<video ref={sampleVideoRef} src={sampleUri} autoPlay loop muted controls onPlay={handleSamplePlay} onPause={handleSamplePause} onSeeked={handleSampleSeek} onRateChange={handleSampleRateChange} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />)}
+                  {sampleUri && !isGenerating && (
+                    <video ref={sampleVideoRef} src={sampleUri} autoPlay loop muted controls onPlay={handleSamplePlay} onPause={handleSamplePause} onSeeked={handleSampleSeek} onRateChange={handleSampleRateChange} style={{ width: '100%', height: '100%', objectFit: 'contain' }}>
+                      {showSubtitles && vttUri && <track src={vttUri} kind="subtitles" label="Preview Subs" default />}
+                    </video>
+                  )}
                 </div>
               </div>
             </div>
@@ -3820,14 +3899,18 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
+                  >
+                    {showSubtitles && vttUri && <track src={vttUri} kind="subtitles" label="Preview Subs" default />}
+                  </video>
                 )}
                 {/* Original on top, clipped to left side of slider */}
                 {refUri && !isGenerating && (
                   <video ref={refVideoRef} src={refUri} autoPlay muted
                     onLoadedMetadata={handleSliderVideoLoadedMetadata}
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
-                  />
+                  >
+                    {showSubtitles && vttUri && <track src={vttUri} kind="subtitles" label="Preview Subs" default />}
+                  </video>
                 )}
                 {/* Slider handle */}
                 {refUri && sampleUri && !isGenerating && (
@@ -3970,7 +4053,17 @@ function SampleModal({ file, config, onSaveConfig, onClose, showToast }) {
             Close
           </button>
           
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {vttUri && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-bright)', cursor: 'pointer', userSelect: 'none' }}>
+                <input 
+                  type="checkbox" 
+                  checked={showSubtitles} 
+                  onChange={(e) => setShowSubtitles(e.target.checked)} 
+                />
+                Enable Subtitle Sync Preview
+              </label>
+            )}
             <button 
               type="button" 
               className="btn btn-primary"
