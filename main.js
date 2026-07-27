@@ -528,14 +528,14 @@ function parseMediaInfo(file, data) {
     console.error(`Error scanning external subtitles for ${file.fullPath}:`, e);
   }
 
-  const allowedSubtitlesOk = ['UTF-8', 'SRT', 'WEBVTT'];
+  const allowedSubtitlesOk = ['UTF-8', 'SRT', 'WEBVTT', 'ASS', 'SSA', 'SUBRIP', 'TEXT', 'SUBSTATION'];
   for (let i = 0; i < result.subtitleStreams.length; i++) {
     const sub = result.subtitleStreams[i];
     const formatUpper = sub.format.toUpperCase();
     const isSubOk = allowedSubtitlesOk.some(s => formatUpper.includes(s));
     if (!isSubOk) {
       const label = sub.isExternal ? `${sub.format} (EXT)` : sub.format;
-      result.plexIssues.push(`Subtitle stream #${i + 1} (${label}) is not SRT/WebVTT`);
+      result.plexIssues.push(`Subtitle stream #${i + 1} (${label}) is graphical (PGS/VOBSUB) and not text-based (SRT/ASS/SSA/WebVTT)`);
     }
   }
 
