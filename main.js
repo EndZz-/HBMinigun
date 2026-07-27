@@ -1917,9 +1917,34 @@ ipcMain.handle('download-and-install-update', async (event, downloadUrl) => {
           reject(new Error(`Failed to download update: status code ${res.statusCode}`));
           return;
         }
+
+        const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
+        let downloadedBytes = 0;
+
+        res.on('data', (chunk) => {
+          downloadedBytes += chunk.length;
+          const percent = totalBytes ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-progress', {
+              status: 'downloading',
+              percent,
+              downloadedBytes,
+              totalBytes
+            });
+          }
+        });
+
         res.pipe(file);
         file.on('finish', () => {
           file.close();
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-progress', {
+              status: 'downloaded',
+              percent: 100,
+              downloadedBytes,
+              totalBytes
+            });
+          }
           resolve();
         });
       }).on('error', (err) => {
@@ -1932,17 +1957,26 @@ ipcMain.handle('download-and-install-update', async (event, downloadUrl) => {
 
   try {
     await downloadFile(downloadUrl, installerPath);
+    return { success: true, installerPath };
+  } catch (err) {
+    console.error('Update download failed:', err);
+    return { success: false, error: err.message };
+  }
+});
 
-    const child = spawn(installerPath, ['/S'], {
-      detached: true,
-      stdio: 'ignore'
-    });
-    child.unref();
-
+ipcMain.handle('finish-and-launch-update', async (event, { installerPath, relaunch }) => {
+  try {
+    if (installerPath && fs.existsSync(installerPath)) {
+      const child = spawn(installerPath, ['/S'], {
+        detached: true,
+        stdio: 'ignore'
+      });
+      child.unref();
+    }
     app.quit();
     return { success: true };
   } catch (err) {
-    console.error('Update download/install failed:', err);
+    console.error('Failed to launch installer:', err);
     return { success: false, error: err.message };
   }
 });

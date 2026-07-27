@@ -204,6 +204,10 @@ export default function App() {
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState(null);
+  const [isUpdateFinished, setIsUpdateFinished] = useState(false);
+  const [relaunchAfterUpdate, setRelaunchAfterUpdate] = useState(true);
+  const [installerPath, setInstallerPath] = useState(null);
   const [downloadError, setDownloadError] = useState(null);
   const [appVersion, setAppVersion] = useState('');
 
@@ -295,19 +299,42 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (window.api && window.api.onUpdateProgress) {
+      const cleanup = window.api.onUpdateProgress((data) => {
+        setUpdateProgress(data);
+      });
+      return cleanup;
+    }
+  }, []);
+
   const handleDownloadAndInstall = async () => {
     if (!updateInfo || !updateInfo.downloadUrl) return;
     setIsDownloadingUpdate(true);
+    setIsUpdateFinished(false);
     setDownloadError(null);
+    setUpdateProgress({ status: 'downloading', percent: 0, downloadedBytes: 0, totalBytes: 0 });
     try {
       const res = await window.api.downloadAndInstallUpdate(updateInfo.downloadUrl);
-      if (!res.success) {
+      if (res && res.success) {
+        setInstallerPath(res.installerPath);
         setIsDownloadingUpdate(false);
-        setDownloadError(res.error || 'Failed to install update.');
+        setIsUpdateFinished(true);
+      } else {
+        setIsDownloadingUpdate(false);
+        setDownloadError(res.error || 'Failed to download update.');
       }
     } catch (err) {
       setIsDownloadingUpdate(false);
       setDownloadError(err.message || 'Error occurred during downloading update.');
+    }
+  };
+
+  const handleFinishUpdate = async () => {
+    try {
+      await window.api.finishAndLaunchUpdate({ installerPath, relaunch: relaunchAfterUpdate });
+    } catch (err) {
+      showToast('Update Error', err.message);
     }
   };
 
@@ -3174,7 +3201,7 @@ export default function App() {
             <div className="modal-header">
               <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <RefreshCw size={16} style={{ color: 'var(--accent)' }} className={isDownloadingUpdate ? "animate-spin" : ""} />
-                New Update Available
+                {isUpdateFinished ? 'Update Ready' : (isDownloadingUpdate ? 'Downloading Update' : 'New Update Available')}
               </h2>
               {!isDownloadingUpdate && (
                 <button className="modal-close-btn" onClick={() => setUpdateModalOpen(false)}>
@@ -3187,30 +3214,82 @@ export default function App() {
                 A newer version <strong style={{ color: 'var(--accent)', fontSize: '14px' }}>{updateInfo.latestVersion}</strong> is available (current: <strong>v{appVersion}</strong>).
               </div>
 
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 'bold' }}>Release Notes</div>
-              <div 
-                style={{ 
-                  background: 'var(--bg-darker)', 
-                  border: '1px solid var(--border)', 
-                  borderRadius: '6px', 
-                  padding: '12px', 
-                  fontSize: '12px', 
-                  maxHeight: '200px', 
-                  overflowY: 'auto', 
-                  fontFamily: 'monospace', 
-                  whiteSpace: 'pre-wrap',
-                  color: 'var(--text-main)',
-                  marginBottom: '16px'
-                }}
-              >
-                {updateInfo.releaseNotes || 'No release notes provided.'}
-              </div>
+              {!isUpdateFinished && (
+                <>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 'bold' }}>Release Notes</div>
+                  <div 
+                    style={{ 
+                      background: 'var(--bg-darker)', 
+                      border: '1px solid var(--border)', 
+                      borderRadius: '6px', 
+                      padding: '12px', 
+                      fontSize: '12px', 
+                      maxHeight: '180px', 
+                      overflowY: 'auto', 
+                      fontFamily: 'monospace', 
+                      whiteSpace: 'pre-wrap',
+                      color: 'var(--text-main)',
+                      marginBottom: '16px'
+                    }}
+                  >
+                    {updateInfo.releaseNotes || 'No release notes provided.'}
+                  </div>
+                </>
+              )}
 
               {isDownloadingUpdate && (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', background: 'rgba(0, 132, 255, 0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(0, 132, 255, 0.2)' }}>
-                  <Loader2 className="animate-spin" size={24} style={{ color: 'var(--accent)' }} />
-                  <span style={{ fontSize: '12.5px', fontWeight: '600', color: 'var(--text-bright)' }}>Downloading & installing the latest update...</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>The application will close automatically once the installation starts.</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(0, 132, 255, 0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(0, 132, 255, 0.2)', marginTop: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px', fontWeight: '600', color: 'var(--text-bright)' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Loader2 className="animate-spin" size={16} style={{ color: 'var(--accent)' }} />
+                      Downloading Update Package...
+                    </span>
+                    <span style={{ color: 'var(--accent)', fontWeight: '700' }}>
+                      {updateProgress ? `${updateProgress.percent}%` : '0%'}
+                    </span>
+                  </div>
+
+                  <div style={{ width: '100%', height: '8px', background: 'var(--bg-darker)', borderRadius: '4px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                    <div 
+                      style={{ 
+                        height: '100%', 
+                        width: `${updateProgress ? updateProgress.percent : 0}%`, 
+                        background: 'linear-gradient(90deg, var(--accent), #3b82f6)', 
+                        borderRadius: '4px', 
+                        transition: 'width 0.2s ease-out' 
+                      }} 
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    <span>
+                      {updateProgress && updateProgress.downloadedBytes 
+                        ? `${(updateProgress.downloadedBytes / (1024 * 1024)).toFixed(1)} MB` 
+                        : '0 MB'} 
+                      {updateProgress && updateProgress.totalBytes ? ` / ${(updateProgress.totalBytes / (1024 * 1024)).toFixed(1)} MB` : ''}
+                    </span>
+                    <span>Please wait...</span>
+                  </div>
+                </div>
+              )}
+
+              {isUpdateFinished && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', background: 'rgba(16, 185, 129, 0.08)', padding: '20px', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.25)', marginTop: '8px', textAlign: 'center' }}>
+                  <CheckCircle size={36} style={{ color: '#10b981' }} />
+                  <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-bright)' }}>Update Download Complete & Ready!</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Version <strong style={{ color: '#10b981' }}>{updateInfo.latestVersion}</strong> has been downloaded and verified.
+                  </div>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: 'var(--text-bright)', cursor: 'pointer', userSelect: 'none', marginTop: '6px', background: 'var(--bg-card)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={relaunchAfterUpdate} 
+                      onChange={(e) => setRelaunchAfterUpdate(e.target.checked)} 
+                      style={{ accentColor: 'var(--accent)', cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                    Start app after update process finishes
+                  </label>
                 </div>
               )}
 
@@ -3221,24 +3300,44 @@ export default function App() {
                 </div>
               )}
             </div>
-            <div className="modal-footer">
-              <button 
-                type="button" 
-                className="btn btn-secondary" 
-                onClick={() => setUpdateModalOpen(false)}
-                disabled={isDownloadingUpdate}
-              >
-                Remind Me Later
-              </button>
-              <button 
-                type="button" 
-                className="btn btn-primary"
-                style={{ background: 'var(--accent)' }}
-                onClick={handleDownloadAndInstall}
-                disabled={isDownloadingUpdate || !updateInfo.downloadUrl}
-              >
-                {isDownloadingUpdate ? 'Installing...' : 'Download & Install Now'}
-              </button>
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: isUpdateFinished || isDownloadingUpdate ? 'flex-end' : 'space-between', gap: '12px' }}>
+              {!isDownloadingUpdate && !isUpdateFinished && (
+                <>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={() => setUpdateModalOpen(false)}
+                  >
+                    Remind Me Later
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-primary"
+                    style={{ background: 'var(--accent)' }}
+                    onClick={handleDownloadAndInstall}
+                    disabled={!updateInfo.downloadUrl}
+                  >
+                    Download & Install Now
+                  </button>
+                </>
+              )}
+
+              {isDownloadingUpdate && (
+                <button type="button" className="btn btn-secondary" disabled>
+                  Downloading... ({updateProgress ? updateProgress.percent : 0}%)
+                </button>
+              )}
+
+              {isUpdateFinished && (
+                <button 
+                  type="button" 
+                  className="btn btn-success"
+                  style={{ background: '#059669', color: '#fff', fontWeight: '600', padding: '8px 28px', fontSize: '13px' }}
+                  onClick={handleFinishUpdate}
+                >
+                  OK
+                </button>
+              )}
             </div>
           </div>
         </div>
