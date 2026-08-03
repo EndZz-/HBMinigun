@@ -3,19 +3,58 @@ const path = require('path');
 const fs = require('fs');
 const { spawn, execFile, exec } = require('child_process');
 
+// Logs setup
+const logsDir = path.join(app.getPath('userData'), 'logs');
+const logFilePath = path.join(logsDir, 'hbminigun.log');
+const oldLogFilePath = path.join(logsDir, 'hbminigun_old.log');
+
+function logToFile(level, message, ...args) {
+  try {
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+
+    if (fs.existsSync(logFilePath)) {
+      const stats = fs.statSync(logFilePath);
+      if (stats.size > 10 * 1024 * 1024) {
+        if (fs.existsSync(oldLogFilePath)) {
+          try { fs.unlinkSync(oldLogFilePath); } catch (e) {}
+        }
+        try { fs.renameSync(logFilePath, oldLogFilePath); } catch (e) {}
+      }
+    }
+
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const extra = args.length > 0 ? ' ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') : '';
+    const logLine = `[${timestamp}] [${level.toUpperCase()}] ${message}${extra}\n`;
+
+    fs.appendFileSync(logFilePath, logLine, 'utf8');
+
+    if (level === 'error') {
+      console.error(message, ...args);
+    } else {
+      console.log(message, ...args);
+    }
+  } catch (err) {
+    console.error('Failed writing to log file:', err);
+  }
+}
+
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
+  logToFile('error', 'Uncaught Exception:', error && error.stack ? error.stack : error);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  logToFile('error', 'Unhandled Rejection:', reason);
 });
 
 let mainWindow;
 
-// Settings path
+// Settings & Session paths
 const settingsDir = path.join(app.getPath('userData'));
 const settingsPath = path.join(settingsDir, 'settings.json');
+const sessionStatePath = path.join(settingsDir, 'session_state.json');
+const sessionStateTmpPath = path.join(settingsDir, 'session_state.json.tmp');
 
 // Default Settings
 const defaultSettings = {
@@ -28,6 +67,41 @@ const defaultSettings = {
   tempDir: 'C:\\TempHBMG'
 };
 
+// Session State Helper
+function saveSessionState(stateData) {
+  try {
+    if (!fs.existsSync(settingsDir)) {
+      fs.mkdirSync(settingsDir, { recursive: true });
+    }
+    const payload = JSON.stringify({
+      timestamp: new Date().toISOString(),
+      ...stateData
+    }, null, 2);
+
+    fs.writeFileSync(sessionStateTmpPath, payload, 'utf8');
+    fs.renameSync(sessionStateTmpPath, sessionStatePath);
+    logToFile('info', `Saved session state. (Scanned: ${(stateData.scannedFiles || []).length}, Queue: ${(stateData.queue || []).length})`);
+    return true;
+  } catch (err) {
+    logToFile('error', 'Failed to save session state:', err.message);
+    return false;
+  }
+}
+
+function loadSessionState() {
+  try {
+    if (fs.existsSync(sessionStatePath)) {
+      const data = fs.readFileSync(sessionStatePath, 'utf8');
+      const parsed = JSON.parse(data);
+      logToFile('info', `Loaded session state saved at ${parsed.timestamp}`);
+      return parsed;
+    }
+  } catch (err) {
+    logToFile('error', 'Failed to load session state:', err.message);
+  }
+  return null;
+}
+
 // Load settings
 function loadSettings() {
   try {
@@ -39,7 +113,7 @@ function loadSettings() {
       return { ...defaultSettings, ...JSON.parse(data) };
     }
   } catch (err) {
-    console.error('Failed to load settings:', err);
+    logToFile('error', 'Failed to load settings:', err.message);
   }
   return { ...defaultSettings };
 }
@@ -48,9 +122,10 @@ function loadSettings() {
 function saveSettings(settings) {
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    logToFile('info', 'Settings saved successfully.');
     return true;
   } catch (err) {
-    console.error('Failed to save settings:', err);
+    logToFile('error', 'Failed to save settings:', err.message);
     return false;
   }
 }
@@ -251,6 +326,63 @@ ipcMain.handle('get-settings', () => {
 
 ipcMain.handle('save-settings', (event, settings) => {
   return saveSettings(settings);
+});
+
+ipcMain.handle('save-session-state', (event, stateData) => {
+  return saveSessionState(stateData);
+});
+
+ipcMain.handle('load-session-state', () => {
+  return loadSessionState();
+});
+
+ipcMain.handle('has-saved-session', () => {
+  try {
+    if (fs.existsSync(sessionStatePath)) {
+      const data = fs.readFileSync(sessionStatePath, 'utf8');
+      const parsed = JSON.parse(data);
+      return {
+        hasSession: true,
+        timestamp: parsed.timestamp,
+        scannedCount: (parsed.scannedFiles || []).length,
+        queueCount: (parsed.queue || []).length
+      };
+    }
+  } catch (err) {}
+  return { hasSession: false };
+});
+
+ipcMain.handle('clear-session-state', () => {
+  try {
+    if (fs.existsSync(sessionStatePath)) fs.unlinkSync(sessionStatePath);
+    logToFile('info', 'Cleared session state file.');
+    return true;
+  } catch (err) {
+    return false;
+  }
+});
+
+ipcMain.handle('get-app-logs', () => {
+  try {
+    if (fs.existsSync(logFilePath)) {
+      const logs = fs.readFileSync(logFilePath, 'utf8');
+      const lines = logs.split('\n');
+      return lines.slice(-600).join('\n');
+    }
+  } catch (err) {}
+  return 'No logs found.';
+});
+
+ipcMain.handle('open-logs-folder', () => {
+  try {
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+    shell.openPath(logsDir);
+    return true;
+  } catch (err) {
+    return false;
+  }
 });
 
 ipcMain.handle('check-tools', () => {
@@ -1300,10 +1432,8 @@ async function processNextInQueue(hbPath, settings) {
       }
     }
 
-    mainWindow.webContents.send('transcode-log', {
-      filePath: filePath,
-      text: `Starting encode for: ${fffile.name}\nInput: ${hbInputPath}\nCommand: HandBrakeCLI ${args.join(' ')}\n`
-    });
+    logToFile('info', `[Transcode Start] File: ${fffile.name} (${filePath}) -> Output: ${tempOutPath}`);
+    logToFile('info', `[HandBrake Args] ${args.join(' ')}`);
 
     const hbProc = spawn(hbPath, args);
     activeJobs.set(filePath, hbProc);
@@ -1312,19 +1442,26 @@ async function processNextInQueue(hbPath, settings) {
     if (isUncFile) triggerPrefetch(hbPath, settings);
 
     // Send initial progress update
-    mainWindow.webContents.send('transcode-progress', {
-      filePath: filePath, percent: 0, fps: 0, avgFps: 0, eta: 'Calculating...'
-    });
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('transcode-progress', {
+        filePath: filePath, percent: 0, fps: 0, avgFps: 0, eta: 'Calculating...'
+      });
+    }
 
     // Parse stdout chunk by chunk
     let buffer = '';
+    const lastProgressEmit = new Map();
+    const loggedMilestones = new Set();
+
     hbProc.stdout.on('data', (data) => {
       buffer += data.toString();
       const lines = buffer.split(/[\r\n]+/);
       buffer = lines.pop();
       for (const line of lines) {
         if (line.trim()) {
-          mainWindow.webContents.send('transcode-log', { filePath: filePath, text: line });
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('transcode-log', { filePath: filePath, text: line });
+          }
           const percentMatch = line.match(/Encoding: task \d+ of \d+,\s*([\d\.]+)\s*%/);
           if (percentMatch) {
             const percent = parseFloat(percentMatch[1]);
@@ -1335,9 +1472,24 @@ async function processNextInQueue(hbPath, settings) {
             if (avgFpsMatch) avgFps = parseFloat(avgFpsMatch[1]);
             const etaMatch = line.match(/ETA\s*([^\)]+)/);
             if (etaMatch) eta = etaMatch[1].trim();
-            mainWindow.webContents.send('transcode-progress', {
-              filePath: filePath, percent, fps, avgFps, eta
-            });
+
+            const now = Date.now();
+            const lastEmit = lastProgressEmit.get(filePath) || 0;
+            if (now - lastEmit > 250 || percent >= 100) {
+              lastProgressEmit.set(filePath, now);
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('transcode-progress', {
+                  filePath: filePath, percent, fps, avgFps, eta
+                });
+              }
+            }
+
+            const milestone = Math.floor(percent / 25) * 25;
+            const milestoneKey = `${filePath}_${milestone}`;
+            if (milestone > 0 && !loggedMilestones.has(milestoneKey)) {
+              loggedMilestones.add(milestoneKey);
+              logToFile('info', `[Progress] ${fffile.name}: ${milestone}% (fps: ${fps}, eta: ${eta})`);
+            }
           }
         }
       }

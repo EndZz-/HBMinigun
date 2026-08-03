@@ -28,6 +28,13 @@ contextBridge.exposeInMainWorld('api', {
   downloadAndInstallUpdate: (downloadUrl) => ipcRenderer.invoke('download-and-install-update', downloadUrl),
   finishAndLaunchUpdate: (args) => ipcRenderer.invoke('finish-and-launch-update', args),
   
+  saveSessionState: (state) => ipcRenderer.invoke('save-session-state', state),
+  loadSessionState: () => ipcRenderer.invoke('load-session-state'),
+  hasSavedSession: () => ipcRenderer.invoke('has-saved-session'),
+  clearSessionState: () => ipcRenderer.invoke('clear-session-state'),
+  getAppLogs: () => ipcRenderer.invoke('get-app-logs'),
+  openLogsFolder: () => ipcRenderer.invoke('open-logs-folder'),
+  
   showFileContextMenu: (file) => ipcRenderer.send('show-file-context-menu', file),
 
   // Real-time Event listeners

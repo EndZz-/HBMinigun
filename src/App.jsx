@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Folder,
   FolderOpen,
@@ -27,7 +27,10 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  List
+  List,
+  RotateCcw,
+  FileText,
+  History
 } from 'lucide-react';
 import logo from './assets/logo.png';
 
@@ -117,6 +120,86 @@ const languagesMatch = (streamLang, searchLang) => {
   return false;
 };
 
+
+// Sub-component: Application Logs Viewer Modal
+function LogsModal({ onClose, logsText, isLoading, showToast }) {
+  const [filterText, setFilterText] = useState('');
+
+  const filteredLogs = useMemo(() => {
+    if (!logsText) return '';
+    if (!filterText) return logsText;
+    const lines = logsText.split('\n');
+    return lines.filter(l => l.toLowerCase().includes(filterText.toLowerCase())).join('\n');
+  }, [logsText, filterText]);
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 10000 }} onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '850px', width: '90vw' }}>
+        <div className="modal-header">
+          <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FileText size={18} style={{ color: 'var(--accent)' }} />
+            Application Logs (hbminigun.log)
+          </h2>
+          <button className="modal-close-btn" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '70vh' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, position: 'relative' }}>
+              <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }} />
+              <input 
+                type="text" 
+                className="form-control" 
+                placeholder="Filter log entries..." 
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                style={{ paddingLeft: '32px', height: '32px', fontSize: '12px' }}
+              />
+            </div>
+            <button 
+              type="button" 
+              className="btn btn-secondary btn-sm"
+              onClick={() => window.api.openLogsFolder()}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+            >
+              <FolderOpen size={14} />
+              Open Logs Folder
+            </button>
+          </div>
+
+          <div 
+            style={{ 
+              background: '#090a0f', 
+              border: '1px solid var(--border)', 
+              borderRadius: '6px', 
+              padding: '12px', 
+              fontFamily: 'monospace', 
+              fontSize: '11.5px', 
+              lineHeight: '1.5', 
+              color: '#4ade80', 
+              flex: 1, 
+              minHeight: '350px', 
+              maxHeight: '480px', 
+              overflowY: 'auto', 
+              whiteSpace: 'pre-wrap', 
+              wordBreak: 'break-all' 
+            }}
+          >
+            {isLoading ? 'Loading log file...' : (filteredLogs || 'No matching log entries.')}
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Close Logs
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   if (typeof window === 'undefined' || !window.api) {
@@ -210,6 +293,10 @@ export default function App() {
   const [installerPath, setInstallerPath] = useState(null);
   const [downloadError, setDownloadError] = useState(null);
   const [appVersion, setAppVersion] = useState('');
+  const [savedSessionInfo, setSavedSessionInfo] = useState(null);
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
+  const [appLogsText, setAppLogsText] = useState('');
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
 
   // Transcoding Config
   const [enginesCount, setEnginesCount] = useState(2);
@@ -603,6 +690,112 @@ export default function App() {
   const consoleLogsRef = useRef({}); // Stores logs keyed by filePath
   const consoleEndRef = useRef(null);
 
+  const handleSaveCurrentSession = async () => {
+    if (!window.api || !window.api.saveSessionState) return;
+    try {
+      await window.api.saveSessionState({
+        scanDir,
+        scannedFiles,
+        queue,
+        destinationDir,
+        transcodeMode,
+        postAction,
+        replaceAction,
+        enginesCount,
+        fileConfigs,
+        batchVideoCodec,
+        batchQuality,
+        batchFramerate,
+        batchAudioCodec,
+        batchResolution
+      });
+      const info = await window.api.hasSavedSession();
+      if (info && info.hasSession) {
+        setSavedSessionInfo(info);
+      }
+    } catch (err) {
+      console.error('Failed to save session state:', err);
+    }
+  };
+
+  const handleRecallLastSession = async () => {
+    try {
+      const session = await window.api.loadSessionState();
+      if (!session) {
+        showToast('No Saved Session', 'No previously saved session found on disk.', 'warning');
+        return;
+      }
+
+      if (session.scanDir) setScanDir(session.scanDir);
+      if (session.scannedFiles && Array.isArray(session.scannedFiles)) {
+        setScannedFiles(session.scannedFiles);
+      }
+      if (session.queue && Array.isArray(session.queue)) {
+        setQueue(session.queue);
+      }
+      if (session.destinationDir) setDestinationDir(session.destinationDir);
+      if (session.transcodeMode) setTranscodeMode(session.transcodeMode);
+      if (session.postAction) setPostAction(session.postAction);
+      if (session.replaceAction) setReplaceAction(session.replaceAction);
+      if (session.enginesCount) setEnginesCount(session.enginesCount);
+      if (session.fileConfigs) setFileConfigs(session.fileConfigs);
+      if (session.batchVideoCodec) setBatchVideoCodec(session.batchVideoCodec);
+      if (session.batchQuality) setBatchQuality(session.batchQuality);
+      if (session.batchFramerate) setBatchFramerate(session.batchFramerate);
+      if (session.batchAudioCodec) setBatchAudioCodec(session.batchAudioCodec);
+      if (session.batchResolution) setBatchResolution(session.batchResolution);
+
+      const timeStr = session.timestamp ? new Date(session.timestamp).toLocaleString() : 'last session';
+      showToast(
+        'Session Recalled',
+        `Restored ${(session.scannedFiles || []).length} scanned files & ${(session.queue || []).length} queue items saved at ${timeStr}.`,
+        'success'
+      );
+    } catch (err) {
+      showToast('Recall Error', err.message);
+    }
+  };
+
+  const handleOpenAppLogs = async () => {
+    setLogsModalOpen(true);
+    setIsLoadingLogs(true);
+    try {
+      const logs = await window.api.getAppLogs();
+      setAppLogsText(logs || 'No log entries recorded yet.');
+    } catch (err) {
+      setAppLogsText('Failed to read application logs: ' + err.message);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
+  // Check saved session status on app load
+  useEffect(() => {
+    if (window.api && window.api.hasSavedSession) {
+      window.api.hasSavedSession().then(info => {
+        if (info && info.hasSession) {
+          setSavedSessionInfo(info);
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
+  // Auto-save session state on queue or scannedFiles updates
+  useEffect(() => {
+    if (scannedFiles.length > 0 || queue.length > 0) {
+      handleSaveCurrentSession();
+    }
+  }, [scannedFiles.length, queue.length]);
+
+  // Periodic session save during active transcoding
+  useEffect(() => {
+    if (!isTranscoding) return;
+    const interval = setInterval(() => {
+      handleSaveCurrentSession();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [isTranscoding]);
+
   // Initialize and load
   useEffect(() => {
     async function init() {
@@ -664,10 +857,10 @@ export default function App() {
     const unsubscribeLog = (data) => {
       // data: { filePath, text }
       const path = data.filePath;
-      if (!consoleLogsRef.current[path]) {
-        consoleLogsRef.current[path] = '';
-      }
-      consoleLogsRef.current[path] += data.text + '\n';
+      const current = consoleLogsRef.current[path] || '';
+      const textToAppend = data.text + '\n';
+      const updated = current + textToAppend;
+      consoleLogsRef.current[path] = updated.length > 100000 ? updated.substring(updated.length - 100000) : updated;
       
       // Update UI log if this is the active file
       setActiveConsoleFile(currentFile => {
@@ -1985,6 +2178,39 @@ export default function App() {
               Scanning Library...
             </div>
           )}
+
+          <button 
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={handleRecallLastSession}
+            title={savedSessionInfo ? `Recall session saved at ${new Date(savedSessionInfo.timestamp).toLocaleString()}` : "Recall last saved session"}
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              position: 'relative',
+              borderColor: savedSessionInfo ? 'var(--accent)' : 'var(--border)',
+              color: savedSessionInfo ? 'var(--text-bright)' : 'var(--text-muted)'
+            }}
+          >
+            <RotateCcw size={14} style={{ color: savedSessionInfo ? 'var(--accent)' : 'inherit' }} />
+            Recall Last Session
+            {savedSessionInfo && (
+              <span className="badge" style={{ position: 'absolute', top: '-6px', right: '-6px', background: 'var(--accent)', border: 'none', color: '#fff', fontSize: '8px', padding: '1px 4px', minWidth: '0' }}>SAVED</span>
+            )}
+          </button>
+
+          <button 
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={handleOpenAppLogs}
+            title="View Application Logs"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <FileText size={14} />
+            App Logs
+          </button>
+
           <button 
             type="button"
             className="btn btn-secondary btn-sm"
@@ -3341,6 +3567,16 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* App Logs Modal */}
+      {logsModalOpen && (
+        <LogsModal 
+          onClose={() => setLogsModalOpen(false)}
+          logsText={appLogsText}
+          isLoading={isLoadingLogs}
+          showToast={showToast}
+        />
       )}
     </div>
   );

@@ -33,31 +33,34 @@
 ### 🎬 Batch Transcoding
 <img width="2062" height="1166" alt="image" src="https://github.com/user-attachments/assets/5544e920-2e1e-461f-a55d-927d1443db81" />
 
-
 - Scan entire directories and subdirectories for compatible video files
-- Per-file configuration for codec, quality (RF), frame rate, audio tracks, and subtitles
-- **Batch Apply panel** — apply video codec, quality, frame rate, audio codec, and per-slot audio/subtitle language settings across all selected files in one click
-- Per-slot language dropdowns for audio (up to 10) and subtitles (0–20) — language matching finds the correct track in each file automatically
+- Per-file configuration for codec, quality (RF), frame rate, resolution target, audio tracks, and subtitles
+- **Folders / List View Toggle** — switch between a flat media list and a Section-Grouped Accordion table grouped by folder hierarchy
+- **Smart RF Size Savings Estimator** — real-time estimated output file size and space savings calculation based on original bitrate, RF quality setting, target resolution, and audio streams
+- **Per-Row Resolution Selector** — set target output resolution per file (Original, 2160p 4K, 1080p FHD, 720p HD) with automatic aspect-ratio width/height constraints
+- **Batch Apply Panel** — apply video codec, quality, frame rate, resolution, audio codec, and per-slot audio/subtitle language settings across all selected files in one click
+- Per-slot language dropdowns for audio (up to 10) and subtitles (0–20) — automatic language matching with fallback rules finds the correct track in each file
+- **Custom Context Menus** — right-click any file to open in Windows Explorer, rescan individual files mid-session, or adjust transcode settings
 - Filter and sort the media library by name, size, codec, Plex compatibility, and transcoded status
 - Auto-selects incompatible files for transcoding on scan
-- 
--<img width="931" height="938" alt="image" src="https://github.com/user-attachments/assets/d1b1e24d-630e-4b9c-a97d-e69c986423a4" />
--
-- Manually Sync back to overwrite original content to make sure you're saving space. Free-File-Sync inspired
-
+- <img width="931" height="938" alt="image" src="https://github.com/user-attachments/assets/d1b1e24d-630e-4b9c-a97d-e69c986423a4" />
+- **Async Sync Operations** — manually sync back transcoded files to overwrite originals to save space with background async file operations and free-space verification
 
 ### ⚙️ Encoding Options
 <img width="2879" height="360" alt="image" src="https://github.com/user-attachments/assets/84ed84d2-26c1-4fbc-a0f2-723b80864885" />
 
 - **Video:** H.264 or H.265 with configurable RF quality (10–30)
+- **Resolution:** Original, 2160p (4K), 1080p (FHD), 720p (HD) with automatic downscaling
 - **Frame Rate:** Constant or Variable
 - **Audio:** AAC, AC3, EAC3, MP3, or Copy — up to 10 tracks with per-slot language matching
-- **Subtitles:** 0–20 subtitle tracks with per-slot language matching
+- **Subtitles:** 0–20 subtitle tracks with per-slot language matching and external subtitle detection
 - **HandBrake Preset Profiles:** Import and use any `.json` HandBrake preset file for full encoder control
 
-### 🔤 Subtitle Conversion Pipeline
-- **Text-based subtitles (ASS, SSA, SRT, WebVTT):** Automatically extracted and converted to clean SRT via FFmpeg before muxing — eliminates styled/positional subtitle issues that cause Plex transcoding
-- **Image-based subtitles (PGS, VOBSUB):** Passed through directly via HandBrake (OCR-free, lossless)
+### 🔤 Subtitle Conversion Pipeline & Plex Compatibility
+- **Text-based Subtitles (ASS, SSA, SubRip SRT, WebVTT):** Automatically extracted and converted to clean SRT via FFmpeg before muxing — marked as Plex-compatible so media servers stream natively without forced video transcoding or burn-in
+- **External Subtitle Auto-Detection & Embedding:** Automatically detects companion sidecar subtitle files (`.srt`, `.ass`, `.ssa`, `.vtt`) in the source directory and embeds them directly into the output file during transcoding
+- **Interactive Subtitle Preview:** Explicit Subtitle Track selector dropdown and "Show Subtitles" toggle in the Quality Inspector let you visually verify subtitle formatting and positioning on sample clips before running full batch encodes
+- **Image-based Subtitles (PGS, VOBSUB):** Passed through directly via HandBrake (lossless pass-through), with clear UI status badges and warnings detailing PGS compatibility
 - If FFmpeg is not found, text subtitles fall back to direct passthrough with a warning in the log
 - Extracted SRT files are written to `C:\TempHBMG\subtitles\` and cleaned up automatically
 
@@ -67,6 +70,7 @@
 - Start a transcode queue and **add more files while it's running** — no need to stop and restart
 - **Scan new folders mid-queue** and merge results into the current scan list without losing progress
 - **Refresh** the current scan directory at any time to pick up newly added files
+- **Right-Click Queue Actions & Open Folder** — jump directly to active file locations in Explorer or inspect live HandBrake console logs
 - Adjust **concurrent HandBrake engines (1–8) live** while transcoding:
   - Increasing immediately spawns additional workers
   - Decreasing lets running jobs finish and reduces replacements to the new count
@@ -108,15 +112,18 @@ C:\TempHBMG\
 <img width="2847" height="1642" alt="image" src="https://github.com/user-attachments/assets/be771bab-d3f3-433b-88ab-7f65b5d0d731" />
 
 Compare your original video against a sample transcode **before committing** to a full encode:
-- Scrub to any timestamp in the source file
-- Choose codec and RF value for the sample
-- Side-by-side synchronized playback of original vs. transcoded sample
+- **Dual View Modes:** Toggle between Side-by-Side split screen view and interactive Drag-Slider comparison view
+- **Configurable Preview Duration:** Adjust sample clip duration from 1 second up to 30 seconds
+- **Subtitle Track Selector & Toggle:** Choose specific subtitle streams and toggle live subtitle overlays directly in the sample preview window
+- Scrub to any timestamp in the source file with frame-accurate controls and custom play/pause playback sync
+- Choose codec, resolution, and RF value for the sample
 - Helps dial in the right quality setting without wasting time on full encodes
 
 ### 🔄 Auto-Updater
 - Checks GitHub Releases on launch for a newer version
-- Downloads and silently installs the update in the background
-- No user intervention required — restarts to the new version automatically
+- **Real-Time Download Progress Bar:** Live percentage display, downloaded bytes, and transfer speed indicator
+- **Completion Confirmation Screen:** Interactive modal with instant restart checkbox option to launch the updated version immediately
+- Downloads and silently installs the update in the background when requested
 
 ---
 
@@ -166,6 +173,14 @@ You can change the temp directory path in **Settings**.
 
 | Version | Highlights |
 |---|---|
+| **v1.3.0** | Structured disk logging (hbminigun.log), automatic session state persistence, "Recall Last Session" header button, App Logs viewer modal, and renderer memory optimizations for multi-day continuous batch runs |
+| **v1.2.3** | Real-time download progress bar & completion confirmation screen with restart checkbox in update modal |
+| **v1.2.2** | Text subtitles (ASS, SSA, SubRip/SRT, WebVTT) marked as Plex compatible |
+| **v1.2.0** | Subtitle Track selector & Show Subtitles toggle added to Interactive Quality Inspector |
+| **v1.1.8** | External subtitle auto-detection/sidecar embedding, right-click file rescan & PGS warning indicators |
+| **v1.1.6** | Right-click "Show in Folder" context menus & Open Folder button for active queue items |
+| **v1.1.5** | Media Library Folders / List View toolbar toggle for section-grouped accordion tables |
+| **v1.1.3** | Smart RF size savings estimation engine & section-grouped accordion view |
 | **v0.9.5** | CI: split build and upload steps — eliminates upload race condition and timeout |
 | **v0.9.x** | FFmpeg bundled (via Git LFS); subtitle ASS/SSA→SRT conversion pipeline |
 | **v0.8.8** | Subtitle extraction pipeline; ffmpeg detection and custom path in Settings |
