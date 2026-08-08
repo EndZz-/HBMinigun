@@ -177,41 +177,62 @@ function copyOrMoveFileSafe(src, dest, mode, originalToReplace = null) {
 
 // Robust file copy/move helper with safety guarantees (asynchronous version)
 async function copyOrMoveFileSafeAsync(src, dest, mode, originalToReplace = null, onProgress = null) {
+  logToFile('info', `[File Operation Start] Action: ${mode.toUpperCase()}, Src: ${src}, Dest: ${dest}${originalToReplace ? `, OriginalToReplace: ${originalToReplace}` : ''}`);
   try {
     await fs.promises.mkdir(path.dirname(dest), { recursive: true });
   } catch (e) {}
 
   if (mode === 'move') {
     try {
-      const srcExists = await fs.promises.stat(src).then(() => true).catch(() => false);
       const destExists = await fs.promises.stat(dest).then(() => true).catch(() => false);
       if (destExists && src !== dest) {
+        logToFile('info', `[File Operation] Target destination file exists, unlinking: ${dest}`);
         await fs.promises.unlink(dest);
       }
       await fs.promises.rename(src, dest);
+      logToFile('info', `[File Operation] Renamed/moved successfully: ${src} -> ${dest}`);
       if (onProgress) {
         onProgress(100);
       }
     } catch (err) {
       if (err.code === 'EXDEV' || err.code === 'EPERM' || err.code === 'EACCES') {
+        logToFile('info', `[File Operation] Direct move failed (${err.code}), falling back to copy+unlink: ${src} -> ${dest}`);
         await copyFileWithProgress(src, dest, onProgress);
         await fs.promises.unlink(src);
+        logToFile('info', `[File Operation] Fallback copy+unlink finished: ${dest}`);
       } else {
+        logToFile('error', `[File Operation Error] Move failed ${src} -> ${dest}: ${err.message}`);
         throw err;
       }
     }
   } else {
+    logToFile('info', `[File Operation] Copying file ${src} -> ${dest}`);
     await copyFileWithProgress(src, dest, onProgress);
+    logToFile('info', `[File Operation] Copy finished: ${dest}`);
   }
 
   if (originalToReplace && originalToReplace !== dest) {
     try {
       const origExists = await fs.promises.stat(originalToReplace).then(() => true).catch(() => false);
       if (origExists) {
-        await fs.promises.unlink(originalToReplace);
+        logToFile('info', `[Original File Cleanup] Deleting replaced original file: ${originalToReplace}`);
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            await fs.promises.unlink(originalToReplace);
+            logToFile('info', `[Original File Deleted] Successfully deleted original file: ${originalToReplace}`);
+            break;
+          } catch (delErr) {
+            if (attempt < 3) {
+              logToFile('warn', `[Original File Locked] Attempt ${attempt}/3 to delete original file failed (${delErr.message}). Retrying in 1s...`);
+              await new Promise(r => setTimeout(r, 1000));
+            } else {
+              logToFile('error', `[Original File Locked] Unable to delete original file (${path.basename(originalToReplace)}): File locked by external process (Plex/Windows). Transcode saved at ${dest}`);
+            }
+          }
+        }
       }
     } catch (e) {
-      console.error(`Failed to clean up replaced original file ${originalToReplace}:`, e);
+      logToFile('error', `[Original File Locked] Unable to delete original file ${originalToReplace}: ${e.message}`);
     }
   }
 }
@@ -801,6 +822,7 @@ function triggerPrefetch(hbPath, settings) {
   const file = networkQueue.shift();       // also synchronous — no race
   const srcPath = localSourcePath(file.fullPath, settings);
 
+  logToFile('info', `[Network Staging Start] ${file.name} (${file.fullPath}) -> ${srcPath}`);
   mainWindow.webContents.send('transcode-progress', {
     filePath: file.fullPath, percent: 0, fps: 0, avgFps: 0, eta: 'Staging...'
   });
@@ -813,6 +835,7 @@ function triggerPrefetch(hbPath, settings) {
   withNetworkLock(() => copyFileAsync(file.fullPath, srcPath))
     .then(() => {
       stagedFiles.set(file.fullPath, { file, srcLocal: srcPath });
+      logToFile('info', `[Network Staging Complete] ${file.name} -> Staged at ${srcPath}`);
       mainWindow.webContents.send('transcode-log', {
         filePath: file.fullPath,
         text: `[Network] Staging complete: ${file.name}\n`
@@ -823,6 +846,7 @@ function triggerPrefetch(hbPath, settings) {
     })
     .catch((err) => {
       prefetchInProgress = false;
+      logToFile('error', `[Network Staging Failed] ${file.name}: ${err.message}`);
       mainWindow.webContents.send('transcode-log', {
         filePath: file.fullPath,
         text: `[Network Error] Failed to stage ${file.name}: ${err.message}\n`
@@ -1508,12 +1532,19 @@ async function processNextInQueue(hbPath, settings) {
     function cleanupLocalSource() {
       if (isUncFile && localInputPath) {
         stagedFiles.delete(filePath);
-        try { if (fs.existsSync(localInputPath)) fs.unlinkSync(localInputPath); } catch(e) {}
+        try { 
+          if (fs.existsSync(localInputPath)) {
+            fs.unlinkSync(localInputPath); 
+            logToFile('info', `[Cleanup Staged Source] Unlinked local temp input: ${localInputPath}`);
+          }
+        } catch(e) {
+          logToFile('warn', `[Cleanup Warning] Could not unlink local staged source ${localInputPath}: ${e.message}`);
+        }
       }
     }
 
     hbProc.on('error', (err) => {
-      console.error(`HandBrake process error for ${filePath}:`, err);
+      logToFile('error', `[HandBrake Process Error] ${filePath}: ${err.message}`);
       mainWindow.webContents.send('transcode-log', {
         filePath: filePath,
         text: `[Process Error] Failed to execute HandBrake: ${err.message}\n`
@@ -1534,6 +1565,7 @@ async function processNextInQueue(hbPath, settings) {
       activeJobs.delete(filePath);
 
       if (code === 0) {
+        logToFile('info', `[Transcode Complete] ${fffile.name} - HandBrakeCLI finished with code 0.`);
         mainWindow.webContents.send('transcode-log', {
           filePath: filePath, text: `Encoding completed successfully (Code: ${code}).\n`
         });
@@ -1542,34 +1574,40 @@ async function processNextInQueue(hbPath, settings) {
         try {
           if (currentConfig.mode === 'transcodeDir') {
             // Option #1: Transcode to Destination Folder.
-            // Output was already written directly to the destination by HandBrake.
-            // Apply post-action (Copy/Move back to source) if configured.
             if (currentConfig.postAction === 'move') {
               const origReplace = path.join(path.dirname(filePath), outputFileName);
+              logToFile('info', `[Post-Action] Replacing original via Move: ${tempOutPath} -> ${origReplace}`);
               mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Replacing original via Move: ${origReplace}\n` });
               await copyOrMoveFileSafeAsync(tempOutPath, origReplace, 'move', filePath);
               finalOutPath = origReplace;
             } else if (currentConfig.postAction === 'copy') {
               const origReplace = path.join(path.dirname(filePath), outputFileName);
+              logToFile('info', `[Post-Action] Replacing original via Copy: ${tempOutPath} -> ${origReplace}`);
               mainWindow.webContents.send('transcode-log', { filePath, text: `[Post-Action] Replacing original via Copy: ${origReplace}\n` });
               await copyOrMoveFileSafeAsync(tempOutPath, origReplace, 'copy', filePath);
               finalOutPath = origReplace;
             }
           } else {
             // Option #2: Replace Source Files (Temp Directory).
-            // Move or copy the local transcode to the original file's location.
             if (currentConfig.replaceAction === 'move') {
+              logToFile('info', `[Post-Action] Replacing original via Move: ${tempOutPath} -> ${finalOutPath}`);
               mainWindow.webContents.send('transcode-log', { filePath, text: `Replacing original via Move: ${finalOutPath}\n` });
               await copyOrMoveFileSafeAsync(tempOutPath, finalOutPath, 'move', filePath);
             } else {
+              logToFile('info', `[Post-Action] Replacing original via Copy: ${tempOutPath} -> ${finalOutPath}`);
               mainWindow.webContents.send('transcode-log', { filePath, text: `Replacing original via Copy: ${finalOutPath}\n` });
               await copyOrMoveFileSafeAsync(tempOutPath, finalOutPath, 'copy', filePath);
             }
           }
+          logToFile('info', `[Post-Action Success] Final output file ready at: ${finalOutPath}`);
         } catch (err) {
           fileOpSuccess = false;
+          const friendlyMsg = err.code === 'EBUSY' || err.code === 'EACCES' 
+            ? `Original file locked, unable to delete: ${err.message}` 
+            : `File replacement failed: ${err.message}`;
+          logToFile('error', `[File Replacement Failed] ${filePath}: ${friendlyMsg}`);
           mainWindow.webContents.send('transcode-log', {
-            filePath, text: `[File Operation Failed] ${err.message}\n`
+            filePath, text: `[File Replacement Failed] ${friendlyMsg}\n`
           });
         }
 
@@ -1580,13 +1618,20 @@ async function processNextInQueue(hbPath, settings) {
           filePath: filePath, success: fileOpSuccess, finalPath: finalOutPath
         });
       } else {
+        let userErrorMsg = `Encoding failed (Exit Code ${code})`;
+        if (code === 2) {
+          userErrorMsg = `Invalid arguments / preset error (Exit Code 2). Check custom preset in Settings.`;
+        } else if (code === 3) {
+          userErrorMsg = `Source file decode/read error (Exit Code 3). Source file may be corrupt or locked.`;
+        }
+        logToFile('error', `[Transcode Failed] ${fffile.name} - ${userErrorMsg}`);
         mainWindow.webContents.send('transcode-log', {
-          filePath: filePath, text: `Encoding failed with exit code: ${code}\n`
+          filePath: filePath, text: `[Transcode Failed] ${userErrorMsg}\n`
         });
         cleanupLocalSource();
         try { if (fs.existsSync(tempOutPath)) fs.unlinkSync(tempOutPath); } catch(e) {}
         mainWindow.webContents.send('transcode-file-complete', {
-          filePath: filePath, success: false, error: `Exit code ${code}`
+          filePath: filePath, success: false, error: userErrorMsg
         });
       }
 
