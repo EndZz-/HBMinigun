@@ -521,11 +521,17 @@ ipcMain.handle('scan-directory', async (event, dirPath, checkConfig) => {
 
   // 1. Gather all files
   const files = await scanFolder(dirPath);
+  const totalFiles = files.length;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('scan-progress', { processed: 0, total: totalFiles });
+  }
 
   // 2. Query MediaInfo for each file using a concurrency pool
   const results = [];
-  const limit = 10; // Concurrency limit
+  const limit = 40; // Concurrency limit (increased to 40 for testing)
   let index = 0;
+  let processedCount = 0;
 
   async function worker() {
     while (index < files.length) {
@@ -536,11 +542,20 @@ ipcMain.handle('scan-directory', async (event, dirPath, checkConfig) => {
       const analyzed = parseMediaInfo(file, mediaInfoData);
       analyzed.isProcessed = checkFileProcessed(analyzed, checkConfig);
       results[fileIndex] = analyzed;
+
+      processedCount++;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scan-progress', { processed: processedCount, total: totalFiles });
+      }
     }
   }
 
   const workers = Array(Math.min(limit, files.length)).fill(0).map(() => worker());
   await Promise.all(workers);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('scan-progress', { processed: totalFiles, total: totalFiles });
+  }
 
   return results;
 });

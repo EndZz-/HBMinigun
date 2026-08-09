@@ -77,5 +77,10 @@ contextBridge.exposeInMainWorld('api', {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('sync-progress', subscription);
     return () => ipcRenderer.removeListener('sync-progress', subscription);
+  },
+  onScanProgress: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('scan-progress', subscription);
+    return () => ipcRenderer.removeListener('scan-progress', subscription);
   }
 });

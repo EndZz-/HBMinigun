@@ -237,6 +237,7 @@ export default function App() {
   const [scannedFiles, setScannedFiles] = useState([]);
   const [selectedPaths, setSelectedPaths] = useState(new Set());
   const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(null);
   const [isTranscoding, setIsTranscoding] = useState(false);
   const [scanDir, setScanDir] = useState('');
   
@@ -780,6 +781,16 @@ export default function App() {
     }
   }, []);
 
+  // Subscribe to scan progress events
+  useEffect(() => {
+    if (window.api && window.api.onScanProgress) {
+      const unsub = window.api.onScanProgress((data) => {
+        setScanProgress(data);
+      });
+      return () => unsub();
+    }
+  }, []);
+
   // Auto-save session state on queue or scannedFiles updates
   useEffect(() => {
     if (scannedFiles.length > 0 || queue.length > 0) {
@@ -1033,11 +1044,13 @@ export default function App() {
       showToast('Scan Failed', err.message);
     } finally {
       setIsScanning(false);
+      setScanProgress(null);
     }
   };
 
   const runScan = async (folderPath) => {
     setIsScanning(true);
+    setScanProgress(null);
     setScannedFiles([]);
     setSelectedPaths(new Set());
     
@@ -1093,6 +1106,7 @@ export default function App() {
       showToast('Scan Failed', err.message);
     } finally {
       setIsScanning(false);
+      setScanProgress(null);
     }
   };
 
@@ -2175,7 +2189,9 @@ export default function App() {
           {isScanning && (
             <div className="flex-row text-muted" style={{ fontSize: '12px' }}>
               <Loader2 size={14} className="animate-spin" style={{ color: 'var(--accent)' }} />
-              Scanning Library...
+              {scanProgress && scanProgress.total > 0
+                ? `Scanning Library... (${scanProgress.processed} / ${scanProgress.total})`
+                : 'Scanning Library...'}
             </div>
           )}
 
