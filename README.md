@@ -173,6 +173,7 @@ You can change the temp directory path in **Settings**.
 
 | Version | Highlights |
 |---|---|
+| **v1.3.3** | Increased default transcode options panel height (380px) to fit all controls without scrolling; updated application branding logos |
 | **v1.3.2** | Live MediaInfo scan progress file counter (e.g. 30 / 11528) and increased MediaInfo concurrency pool to 40 parallel streams |
 | **v1.3.1** | User-friendly log & UI error formatting for file locks (Original file locked, unable to delete), HandBrake exit codes, and 3-attempt file deletion retry |
 | **v1.3.0** | Structured disk logging (hbminigun.log), automatic session state persistence, "Recall Last Session" header button, App Logs viewer modal, and renderer memory optimizations for multi-day continuous batch runs |

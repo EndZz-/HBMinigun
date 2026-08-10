@@ -456,8 +456,8 @@ body {
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  max-height: 290px;
-  min-height: 290px;
+  max-height: 380px;
+  min-height: 380px;
   overflow: hidden;
 }
 
