@@ -1837,12 +1837,14 @@ ipcMain.removeHandler('parse-preset-file-ipc');
 
 // Create MainWindow
 function createWindow() {
+  const appIcon = path.join(__dirname, 'build', 'icon.png');
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1024,
     minHeight: 700,
     backgroundColor: '#1c1e22',
+    icon: fs.existsSync(appIcon) ? appIcon : path.join(__dirname, 'public', 'logo.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -2178,8 +2180,23 @@ ipcMain.handle('download-and-install-update', async (event, downloadUrl) => {
 
 ipcMain.handle('finish-and-launch-update', async (event, { installerPath, relaunch }) => {
   try {
+    logToFile('info', `[Update Installer] Finishing update. Installer: ${installerPath}, Relaunch: ${relaunch}`);
     if (installerPath && fs.existsSync(installerPath)) {
-      const child = spawn(installerPath, ['/S'], {
+      const appExeName = 'HBMiniGun.exe';
+      const installedExe1 = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'hbminigun', appExeName);
+      const installedExe2 = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'HBMiniGun', appExeName);
+      const currentExe = process.execPath;
+      
+      let targetExe = currentExe;
+      if (fs.existsSync(installedExe1)) targetExe = installedExe1;
+      else if (fs.existsSync(installedExe2)) targetExe = installedExe2;
+
+      let psCommand = `Start-Process -FilePath "${installerPath}" -ArgumentList "/S" -Wait`;
+      if (relaunch !== false) {
+        psCommand += `; Start-Sleep -s 1; Start-Process -FilePath "${targetExe}"`;
+      }
+
+      const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCommand], {
         detached: true,
         stdio: 'ignore'
       });
@@ -2188,7 +2205,8 @@ ipcMain.handle('finish-and-launch-update', async (event, { installerPath, relaun
     app.quit();
     return { success: true };
   } catch (err) {
-    console.error('Failed to launch installer:', err);
+    logToFile('error', `[Update Installer Failed] ${err.message}`);
+    console.error('Failed to launch installer update script:', err);
     return { success: false, error: err.message };
   }
 });
